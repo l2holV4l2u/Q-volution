@@ -16,8 +16,15 @@ def load_graph(path: str | Path) -> nx.Graph:
 
     Returns a nx.Graph with integer node IDs and 'weight' edge attributes.
     """
-    df = pd.read_parquet(path)
 
+    G = nx.Graph()
+    suffix = path.suffix
+    if suffix == ".csv": df = pd.read_csv(path)
+    elif suffix == ".parquet": df = pd.read_parquet(path)
+    else:
+        raise ValueError(f"can't read file in {suffix} format")
+        
+    
     # Normalise column names to lowercase
     df.columns = [c.lower() for c in df.columns]
 
@@ -42,8 +49,7 @@ def load_graph(path: str | Path) -> nx.Graph:
         raise ValueError(
             f"Cannot detect source/target columns. Found: {list(df.columns)}"
         )
-
-    G = nx.Graph()
+        
 
     for _, row in df.iterrows():
         u = int(row[src_col])
