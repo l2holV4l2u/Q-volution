@@ -50,7 +50,6 @@ def load_graph(path: str | Path) -> nx.Graph:
             f"Cannot detect source/target columns. Found: {list(df.columns)}"
         )
         
-
     for _, row in df.iterrows():
         u = int(row[src_col])
         v = int(row[tgt_col])

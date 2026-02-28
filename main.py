@@ -23,8 +23,18 @@ import random
 import argparse
 from pathlib import Path
 
-import solver as _solver_module   # for patching USE_PYQUIL / LAYER_COUNT / SHOTS
-from pipeline import run_pipeline
+# when the project has been installed this will succeed.  when running
+# in-place (``python main.py`` from the repo root) the package may not yet
+# be on sys.path, so catch ImportError and add the repository root.
+try:
+    from dc_qaoa import solver as _solver_module
+    from dc_qaoa.pipeline import run_pipeline
+except ImportError:  # development invocation
+    import sys
+    sys.path.insert(0, "./")
+    from dc_qaoa import solver as _solver_module
+    from dc_qaoa.pipeline import run_pipeline
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,9 +45,8 @@ def parse_args() -> argparse.Namespace:
 
     # -- Positional ------------------------------------------------------------
     p.add_argument(
-        "graph",
-        nargs="?",
-        help="Path to graph .parquet file (auto-detected if omitted).",
+        "input",
+        help="Path to graph input file.",
     )
 
     # -- QAOA activation -------------------------------------------------------
@@ -45,8 +54,8 @@ def parse_args() -> argparse.Namespace:
         "--qaoa",
         action="store_true",
         default=False,
-        help="Use pyQuil QAOA backend (requires pyquil + QVM or QPU). "
-             "Without this flag the stub backend runs locally.",
+        help="Use quantum approximation optimization algorithmn (QAOA) via pyQuil. "
+             "Without this flag the the program runs using brute force + divide-and-conquer method.",
     )
 
     # -- Quantum computer target -----------------------------------------------
@@ -55,9 +64,10 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
+            ""
             "pyQuil quantum computer name. "
-            "Examples: 8q-qvm | Ankaa-3 | Ankaa-9Q-3. "
-            "Only used when --qaoa is set. Default: auto-sized QVM."
+            "Examples: 8q-qvm | Ankaa-3 | Ankaa-9Q-3 | QVM. "
+            "Only used when --qaoa is set. Default: QVM simulator."
         ),
     )
 
@@ -65,9 +75,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--max-size",
         type=int,
-        default=8,
-        help="Max nodes per QAOA subgraph (qubit budget). Default 8 for Ankaa-3 gate limit.",
+        default=10,
+        help="Max nodes per QAOA subgraph (qubit budget). Default 10 for Ankaa-3 gate limit.",
     )
+    
     p.add_argument(
         "--top-t",
         type=int,
@@ -147,7 +158,7 @@ def main() -> None:
         args.shots = 1024
 
     # -- Locate graph file -----------------------------------------------------
-    graph_path = Path(args.graph) if args.graph else find_parquet()
+    graph_path = Path(args.input)
     if not graph_path.exists():
         print(f"ERROR: File not found: {graph_path}")
         sys.exit(1)

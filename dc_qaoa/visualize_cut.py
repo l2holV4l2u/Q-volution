@@ -15,9 +15,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import networkx as nx
 
-from graph_loader import load_graph
-from pipeline import run_pipeline
-from scorer import maxcut_score
+from .graph_loader import load_graph
+from .pipeline import run_pipeline
+from .scorer import maxcut_score
 
 
 def visualize(G: nx.Graph, assignment: dict, score: float, title: str = "DC-QAOA Max-Cut", out_file: str = "maxcut.png"):
