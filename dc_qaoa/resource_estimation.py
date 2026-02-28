@@ -16,8 +16,8 @@ from pathlib import Path
 
 import networkx as nx
 
-from graph_loader import load_graph
-from partitioner import recursive_partition
+from .graph_loader import load_graph
+from .partitioner import recursive_partition
 
 
 # -- Ankaa-3 hardware limits --------------------------------------------------

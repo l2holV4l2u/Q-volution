@@ -16,11 +16,11 @@ from typing import Optional
 
 import networkx as nx
 
-from graph_loader import load_graph
-from partitioner import recursive_partition, PartitionNode
-from solver import qaoa_solve, setup_qpu, USE_PYQUIL, _local_search
-from merger import merge
-from scorer import maxcut_score
+from .graph_loader import load_graph
+from .partitioner import recursive_partition, PartitionNode
+from .solver import qaoa_solve, setup_qpu, USE_PYQUIL, _local_search
+from .merger import merge
+from .scorer import maxcut_score
 
 
 def run_pipeline(

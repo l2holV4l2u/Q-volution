@@ -24,8 +24,8 @@ from typing import Optional
 
 import networkx as nx
 
-from partitioner import PartitionNode
-from scorer import maxcut_score
+from .partitioner import PartitionNode
+from .scorer import maxcut_score
 
 Solution = dict  # {node_id: +1 | -1}
 _UNSET = None    # sentinel for "node not in this subgraph"
