@@ -43,6 +43,7 @@ Solution = dict  # {node_id: +1 | -1}
 
 # -- User-facing knobs --------------------------------------------------------
 USE_PYQUIL   = False   # set True when pyquil is installed & QVM/QPU ready
+MIXER_MODE   = "X"     # "X" (standard), "XX" (graph-coupled), "XY" (XY-mixer)
 LAYER_COUNT  = 1       # QAOA depth p  (p=1 for noisy hardware; increase for sim)
 SHOTS        = 1024    # measurement shots per circuit run
 SEED         = 42
@@ -52,7 +53,7 @@ NUM_STARTS   = 5       # multi-start COBYLA initializations
 # -- Try importing pyQuil ------------------------------------------------------
 try:
     from pyquil import Program, get_qc
-    from pyquil.gates import H, RZ, RX, CNOT, MEASURE
+    from pyquil.gates import H, RZ, RX, RY, CNOT, MEASURE
     _PYQUIL_AVAILABLE = True
 except ImportError:
     _PYQUIL_AVAILABLE = False
@@ -156,6 +157,7 @@ def _build_qaoa_program(
     n_qubits: int,
     edges: list[tuple[int, int, float]],
     p_layers: int,
+    mixer_mode: str = "X",
 ) -> "Program":
     """
     Build a parametric QAOA circuit for weighted Max-Cut.
@@ -164,7 +166,11 @@ def _build_qaoa_program(
     once and run many times with different parameter values via memory_map.
 
     Cost layer per edge (u,v,w):  CNOT(u,v) - RZ(gamma*w, v) - CNOT(u,v)
-    Mixer layer per node j:       RX(2*beta, j)
+
+    Mixer modes:
+      "X"  -- standard transverse-field: RX(2*beta) per qubit
+      "XX" -- graph-coupled XX: exp(-i*beta*X_iX_j) for each edge (i,j)
+      "XY" -- XY-mixer: exp(-i*beta*(X_iX_j + Y_iY_j)/2) for each edge (i,j)
     """
     prog = Program()
 
@@ -185,9 +191,56 @@ def _build_qaoa_program(
             prog += RZ(gammas[layer] * (-w), v)
             prog += CNOT(u, v)
 
-        # Mixer layer: exp(-i * beta * H_M) = RX(2*beta) per qubit
-        for q in range(n_qubits):
-            prog += RX(betas[layer] * 2.0, q)
+        # Mixer layer
+        if mixer_mode == "X":
+            # Mode X: standard transverse-field mixer
+            # exp(-i * beta * sum_j X_j) = prod_j RX(2*beta, j)
+            for q in range(n_qubits):
+                prog += RX(betas[layer] * 2.0, q)
+
+        elif mixer_mode == "XX":
+            # Mode XX: graph-coupled XX mixer
+            # exp(-i * beta * X_i X_j) per connected edge
+            # Decomposition: H-H-CNOT-RZ(2*beta)-CNOT-H-H
+            # (conjugate ZZ by H⊗H to get XX)
+            for (u, v, _w) in edges:
+                prog += H(u)
+                prog += H(v)
+                prog += CNOT(u, v)
+                prog += RZ(betas[layer] * 2.0, v)
+                prog += CNOT(u, v)
+                prog += H(u)
+                prog += H(v)
+
+        elif mixer_mode == "XY":
+            # Mode XY: XY-mixer = exp(-i * beta * (X_iX_j + Y_iY_j) / 2)
+            # Since [XX, YY] = 0, decompose as:
+            #   exp(-i*beta*XX/2) · exp(-i*beta*YY/2)
+            #
+            # XX part: H⊗H conjugation of ZZ
+            #   H-H-CNOT-RZ(beta)-CNOT-H-H
+            # YY part: Rx(π/2)⊗Rx(π/2) conjugation of ZZ
+            #   Rx(π/2)-Rx(π/2)-CNOT-RZ(beta)-CNOT-Rx(-π/2)-Rx(-π/2)
+            for (u, v, _w) in edges:
+                # exp(-i * beta/2 * XX)
+                prog += H(u)
+                prog += H(v)
+                prog += CNOT(u, v)
+                prog += RZ(betas[layer], v)
+                prog += CNOT(u, v)
+                prog += H(u)
+                prog += H(v)
+                # exp(-i * beta/2 * YY)
+                prog += RX(np.pi / 2, u)
+                prog += RX(np.pi / 2, v)
+                prog += CNOT(u, v)
+                prog += RZ(betas[layer], v)
+                prog += CNOT(u, v)
+                prog += RX(-np.pi / 2, u)
+                prog += RX(-np.pi / 2, v)
+
+        else:
+            raise ValueError(f"Unknown mixer_mode: {mixer_mode!r}")
 
     # Measurement
     ro = prog.declare("ro", "BIT", n_qubits)
@@ -230,7 +283,7 @@ def _pyquil_backend(subgraph: nx.Graph, nodes: list) -> list[Solution]:
         print(f"[solver] Auto-configured QVM: {qc_name}")
 
     # Build and compile parametric circuit (compile once)
-    prog = _build_qaoa_program(n, edges, LAYER_COUNT)
+    prog = _build_qaoa_program(n, edges, LAYER_COUNT, mixer_mode=MIXER_MODE)
     prog_shots = prog.wrap_in_numshots_loop(SHOTS)
     executable = _QC.compile(prog_shots)
 
