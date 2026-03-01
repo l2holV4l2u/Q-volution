@@ -18,7 +18,8 @@ import networkx as nx
 
 from .graph_loader import load_graph
 from .partitioner import recursive_partition, PartitionNode
-from .solver import qaoa_solve, setup_qpu, USE_PYQUIL, _local_search
+from .solver import qaoa_solve, setup_quantum_computer, _local_search
+import dc_qaoa.solver as _solver
 from .merger import merge
 from .scorer import maxcut_score
 
@@ -50,8 +51,8 @@ def run_pipeline(
     # ------------------------------------------------------------------ 0 --
     if qc_name:
         print(f"\n=== Step 0: Configure quantum computer ({qc_name}) ===")
-        setup_qpu(qc_name)
-    elif USE_PYQUIL:
+        setup_quantum_computer(qc_name)
+    elif _solver.USE_PYQUIL:
         print("\n[pipeline] USE_PYQUIL=True -- QC will be auto-configured per subgraph.")
 
     # ------------------------------------------------------------------ 1 --
@@ -73,7 +74,7 @@ def run_pipeline(
     subgraph_solutions: dict = {}
     for i, leaf in enumerate(leaves):
         n_nodes = leaf.graph.number_of_nodes()
-        backend = "pyQuil" if USE_PYQUIL else "stub"
+        backend = "pyQuil" if _solver.USE_PYQUIL else "stub"
         print(
             f"[pipeline] Leaf {i + 1}/{len(leaves)}: "
             f"{n_nodes} nodes, {leaf.graph.number_of_edges()} edges  "

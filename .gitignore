@@ -1,0 +1,4 @@
+venv_qaoa/
+.venv_qaoa/
+dc_qaoa/__pycache__/
+dc_qaoa.egg-info/
