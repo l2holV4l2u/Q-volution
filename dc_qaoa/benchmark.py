@@ -21,9 +21,14 @@ from pathlib import Path
 
 import networkx as nx
 
-from .graph_loader import load_graph
-from .scorer import maxcut_score
-from .solver import _local_search
+try:
+    from graph_loader import load_graph
+    from scorer import maxcut_score
+    from solver import _local_search
+except ImportError:
+    from .graph_loader import load_graph
+    from .scorer import maxcut_score
+    from .solver import _local_search
 
 
 def random_assignment(G: nx.Graph, trials: int = 1000) -> tuple[dict, float]:
@@ -102,7 +107,10 @@ def nx_one_exchange(G: nx.Graph) -> tuple[dict, float]:
 
 def run_pipeline_benchmark(graph_path: str) -> tuple[dict, float, float]:
     """Run the full DC-QAOA pipeline and return (assignment, score, elapsed)."""
-    from .pipeline import run_pipeline
+    try:
+        from pipeline import run_pipeline
+    except ImportError:
+        from .pipeline import run_pipeline
     t0 = time.time()
     assignment, score = run_pipeline(graph_path, max_size=84, top_t=10)
     elapsed = time.time() - t0

@@ -37,7 +37,10 @@ import itertools
 import numpy as np
 import networkx as nx
 
-from .scorer import maxcut_score
+try:
+    from scorer import maxcut_score
+except ImportError:
+    from .scorer import maxcut_score
 
 Solution = dict  # {node_id: +1 | -1}
 
@@ -47,7 +50,7 @@ MIXER_MODE   = "X"     # "X" (standard), "XX" (graph-coupled), "XY" (XY-mixer)
 LAYER_COUNT  = 1       # QAOA depth p  (p=1 for noisy hardware; increase for sim)
 SHOTS        = 1024    # measurement shots per circuit run
 SEED         = 42
-NUM_STARTS   = 5       # multi-start COBYLA initializations
+SA_MAXITER   = 1000    # simulated annealing max iterations
 # ------------------------------------------------------------------------------
 
 # -- Try importing pyQuil ------------------------------------------------------
@@ -274,52 +277,45 @@ def _pyquil_backend(subgraph: nx.Graph, nodes: list) -> list[Solution]:
     prog_shots = prog.wrap_in_numshots_loop(SHOTS)
     executable = _QC.compile(prog_shots)
 
-    # Multi-start COBYLA optimization
+    # Simulated Annealing optimization
+    from scipy.optimize import dual_annealing
+
     parameter_count = 2 * LAYER_COUNT
-    rng = np.random.default_rng(SEED)
+    bounds = [(-np.pi, np.pi)] * parameter_count
 
-    best_cut = -float("inf")
-    best_params = None
+    def objective(params, _edges=edges, _exe=executable):
+        gammas_val = params[:LAYER_COUNT].tolist()
+        betas_val = params[LAYER_COUNT:].tolist()
 
-    for trial in range(NUM_STARTS):
-        x0 = rng.uniform(-np.pi, np.pi, parameter_count)
-
-        def objective(params, _edges=edges, _exe=executable):
-            gammas_val = params[:LAYER_COUNT].tolist()
-            betas_val = params[LAYER_COUNT:].tolist()
-
-            result = _QC.run(
-                _exe,
-                memory_map={
-                    "gammas": gammas_val,
-                    "betas": betas_val,
-                },
-            )
-            bitstrings = np.array(result.get_register_map().get("ro"))
-
-            # Compute average cut value over all shots
-            total_cut = 0.0
-            for shot in range(len(bitstrings)):
-                for (u, v, w) in _edges:
-                    if bitstrings[shot, u] != bitstrings[shot, v]:
-                        total_cut += w
-            avg_cut = total_cut / len(bitstrings)
-            return -avg_cut  # minimize negative cut = maximize cut
-
-        from scipy.optimize import minimize as scipy_minimize
-        result = scipy_minimize(
-            objective,
-            x0,
-            method="COBYLA",
-            options={"maxiter": 200, "rhobeg": 0.5},
+        result = _QC.run(
+            _exe,
+            memory_map={
+                "gammas": gammas_val,
+                "betas": betas_val,
+            },
         )
+        bitstrings = np.array(result.get_register_map().get("ro"))
 
-        trial_cut = -result.fun
-        if trial_cut > best_cut:
-            best_cut = trial_cut
-            best_params = result.x
+        # Compute average cut value over all shots
+        total_cut = 0.0
+        for shot in range(len(bitstrings)):
+            for (u, v, w) in _edges:
+                if bitstrings[shot, u] != bitstrings[shot, v]:
+                    total_cut += w
+        avg_cut = total_cut / len(bitstrings)
+        return -avg_cut  # minimize negative cut = maximize cut
 
-    print(f"[solver] QAOA best E[cut]: {best_cut:.4f} (from {NUM_STARTS} starts)")
+    result = dual_annealing(
+        objective,
+        bounds=bounds,
+        seed=SEED,
+        maxiter=SA_MAXITER,
+    )
+
+    best_cut = -result.fun
+    best_params = result.x
+
+    print(f"[solver] QAOA best E[cut]: {best_cut:.4f} (simulated annealing)")
 
     # Sample the optimal circuit
     gammas_opt = best_params[:LAYER_COUNT].tolist()

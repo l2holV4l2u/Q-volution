@@ -16,12 +16,20 @@ from typing import Optional
 
 import networkx as nx
 
-from .graph_loader import load_graph
-from .partitioner import recursive_partition, PartitionNode
-from .solver import qaoa_solve, setup_quantum_computer, _local_search
-import dc_qaoa.solver as _solver
-from .merger import merge
-from .scorer import maxcut_score
+try:
+    from graph_loader import load_graph
+    from partitioner import recursive_partition
+    from solver import qaoa_solve, setup_quantum_computer, _local_search
+    import solver as _solver
+    from merger import merge
+    from scorer import maxcut_score
+except ImportError:
+    from .graph_loader import load_graph
+    from .partitioner import recursive_partition
+    from .solver import qaoa_solve, setup_quantum_computer, _local_search
+    from . import solver as _solver
+    from .merger import merge
+    from .scorer import maxcut_score
 
 
 def run_pipeline(

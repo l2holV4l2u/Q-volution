@@ -10,15 +10,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import networkx as nx
 
-from .graph_loader import load_graph
-from .pipeline import run_pipeline
-from .scorer import maxcut_score
-
+from graph_loader import load_graph
+from pipeline import run_pipeline
 
 def visualize(G: nx.Graph, assignment: dict, score: float, title: str = "DC-QAOA Max-Cut", out_file: str = "maxcut.png"):
     total_weight = sum(d.get("weight", 1.0) for _, _, d in G.edges(data=True))

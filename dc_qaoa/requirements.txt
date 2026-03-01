@@ -5,6 +5,12 @@ networkx>=3.2
 numpy>=1.26
 scipy>=1.12
 
+# Visualization
+matplotlib>=3.7
+
+# Upper bound estimation (bruteforce.py, Dataset B)
+cvxpy>=1.4
+
 # pyQuil + QCS SDK -- required for real QAOA on Rigetti QPU/QVM
 # Also requires quilc and qvm servers for local simulation:
 #   quilc -S   (Quil compiler server)

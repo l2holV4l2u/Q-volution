@@ -18,6 +18,7 @@ def load_graph(path: str | Path) -> nx.Graph:
     """
 
     G = nx.Graph()
+    path = Path(path)
     suffix = path.suffix
     if suffix == ".csv": df = pd.read_csv(path)
     elif suffix == ".parquet": df = pd.read_parquet(path)
