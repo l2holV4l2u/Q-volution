@@ -50,6 +50,25 @@ SEED         = 42
 NUM_STARTS   = 5       # multi-start COBYLA initializations
 # ------------------------------------------------------------------------------
 
+# -- Result stores populated by _pyquil_backend after each subgraph solve -----
+# Keyed by id(subgraph) so every DC-QAOA leaf gets its own record.
+#
+# OPTIMIZATION_HISTORY[id(subgraph)] -> list[list[float]]
+#   Outer list : one entry per COBYLA trial  (len = NUM_STARTS)
+#   Inner list : E[cut] at every objective function evaluation within that trial
+#   → used by the loss-curve notebook cell to plot convergence
+#
+# FINAL_PARAMETERS[id(subgraph)] -> dict
+#   "gammas"     list[float]  optimal cost angles  γ_1 … γ_p
+#   "betas"      list[float]  optimal mixer angles β_1 … β_p
+#   "best_e_cut" float        E[cut] at optimal params
+#   "best_trial" int          which multi-start trial won  (0-indexed)
+#   "mixer_mode" str
+#   "n_layers"   int          LAYER_COUNT (p)
+#   "n_qubits"   int
+OPTIMIZATION_HISTORY: dict = {}
+FINAL_PARAMETERS:     dict = {}
+
 # -- Try importing pyQuil ------------------------------------------------------
 try:
     from pyquil import Program, get_qc
@@ -158,6 +177,7 @@ def _build_qaoa_program(
     edges: list[tuple[int, int, float]],
     p_layers: int,
     mixer_mode: str = "X",
+    preconditioned = False,
 ) -> "Program":
     """
     Build a parametric QAOA circuit for weighted Max-Cut.
@@ -184,25 +204,17 @@ def _build_qaoa_program(
 
     # QAOA layers
     for layer in range(p_layers):
-        # Cost layer: exp(-i * gamma * H_C)
-        # For each edge, apply CNOT-RZ-CNOT to implement ZZ rotation
         for (u, v, w) in edges:
             prog += CNOT(u, v)
             prog += RZ(gammas[layer] * (-w), v)
             prog += CNOT(u, v)
 
-        # Mixer layer
+        # Mixing layer
         if mixer_mode == "X":
-            # Mode X: standard transverse-field mixer
-            # exp(-i * beta * sum_j X_j) = prod_j RX(2*beta, j)
             for q in range(n_qubits):
                 prog += RX(betas[layer] * 2.0, q)
 
         elif mixer_mode == "XX":
-            # Mode XX: graph-coupled XX mixer
-            # exp(-i * beta * X_i X_j) per connected edge
-            # Decomposition: H-H-CNOT-RZ(2*beta)-CNOT-H-H
-            # (conjugate ZZ by H⊗H to get XX)
             for (u, v, _w) in edges:
                 prog += H(u)
                 prog += H(v)
@@ -213,13 +225,6 @@ def _build_qaoa_program(
                 prog += H(v)
 
         elif mixer_mode == "XY":
-            # Mode XY: XY-mixer = exp(-i * beta * (X_iX_j + Y_iY_j) / 2)
-            # Since [XX, YY] = 0, decompose as:
-            #   exp(-i*beta*XX/2) · exp(-i*beta*YY/2)
-            #
-            # XX part: H⊗H conjugation of ZZ
-            #   H-H-CNOT-RZ(beta)-CNOT-H-H
-            # YY part: Rx(π/2)⊗Rx(π/2) conjugation of ZZ
             #   Rx(π/2)-Rx(π/2)-CNOT-RZ(beta)-CNOT-Rx(-π/2)-Rx(-π/2)
             for (u, v, _w) in edges:
                 # exp(-i * beta/2 * XX)
@@ -240,7 +245,7 @@ def _build_qaoa_program(
                 prog += RX(-np.pi / 2, v)
 
         else:
-            raise ValueError(f"Unknown mixer_mode: {mixer_mode!r}")
+            raise ValueError(f"mixer mode: {mixer_mode!r} is not supported")
 
     # Measurement
     ro = prog.declare("ro", "BIT", n_qubits)
@@ -293,11 +298,14 @@ def _pyquil_backend(subgraph: nx.Graph, nodes: list) -> list[Solution]:
 
     best_cut = -float("inf")
     best_params = None
+    best_trial_idx = -1
+    all_trials_history: list[list[float]] = []
 
     for trial in range(NUM_STARTS):
+        trial_history: list[float] = []
         x0 = rng.uniform(-np.pi, np.pi, parameter_count)
 
-        def objective(params, _edges=edges, _exe=executable):
+        def objective(params, _edges=edges, _exe=executable, _hist=trial_history):
             gammas_val = params[:LAYER_COUNT].tolist()
             betas_val = params[LAYER_COUNT:].tolist()
 
@@ -317,6 +325,7 @@ def _pyquil_backend(subgraph: nx.Graph, nodes: list) -> list[Solution]:
                     if bitstrings[shot, u] != bitstrings[shot, v]:
                         total_cut += w
             avg_cut = total_cut / len(bitstrings)
+            _hist.append(avg_cut)        # record E[cut] at this function eval
             return -avg_cut  # minimize negative cut = maximize cut
 
         from scipy.optimize import minimize as scipy_minimize
@@ -327,12 +336,38 @@ def _pyquil_backend(subgraph: nx.Graph, nodes: list) -> list[Solution]:
             options={"maxiter": 200, "rhobeg": 0.5},
         )
 
+        all_trials_history.append(trial_history)
         trial_cut = -result.fun
         if trial_cut > best_cut:
             best_cut = trial_cut
             best_params = result.x
+            best_trial_idx = trial
+
+    # Store per-trial E[cut] traces for loss-curve plotting
+    OPTIMIZATION_HISTORY[id(subgraph)] = all_trials_history
 
     print(f"[solver] QAOA best E[cut]: {best_cut:.4f} (from {NUM_STARTS} starts)")
+
+    # Decompose flat parameter vector into named per-layer lists
+    gammas_opt = best_params[:LAYER_COUNT].tolist()
+    betas_opt  = best_params[LAYER_COUNT:].tolist()
+
+    # Store final optimised parameters
+    FINAL_PARAMETERS[id(subgraph)] = {
+        "gammas":      gammas_opt,
+        "betas":       betas_opt,
+        "best_e_cut":  best_cut,
+        "best_trial":  best_trial_idx,
+        "mixer_mode":  MIXER_MODE,
+        "n_layers":    LAYER_COUNT,
+        "n_qubits":    n,
+    }
+    print(
+        f"[solver] Optimal params | "
+        f"gammas={[f'{g:.4f}' for g in gammas_opt]} | "
+        f"betas={[f'{b:.4f}' for b in betas_opt]} | "
+        f"trial {best_trial_idx + 1}/{NUM_STARTS}"
+    )
 
     # Sample the optimal circuit
     gammas_opt = best_params[:LAYER_COUNT].tolist()
@@ -377,7 +412,6 @@ def _brute_force(nodes: list) -> list[Solution]:
         dict(zip(nodes, bits))
         for bits in itertools.product([-1, 1], repeat=len(nodes))
     ]
-
 
 def _random_local_search(
     subgraph: nx.Graph, nodes: list, samples: int
