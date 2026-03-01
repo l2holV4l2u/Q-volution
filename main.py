@@ -62,12 +62,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--qc",
         type=str,
-        default=None,
+        default="8q-qvm",
         help=(
             ""
             "pyQuil quantum computer name. "
             "Examples: 8q-qvm | Ankaa-3 | Ankaa-9Q-3 | QVM. "
-            "Only used when --qaoa is set. Default: QVM simulator."
+            "Only used when --qaoa is set. Default: 8q-qvm (QVM simulator)."
         ),
     )
 
@@ -152,7 +152,6 @@ def main() -> None:
 
     # -- Apply --hardware preset -----------------------------------------------
     if args.hardware:
-        args.qaoa = True
         args.max_size = 8
         args.layers = 1
         args.shots = 1024
@@ -172,16 +171,18 @@ def main() -> None:
     _solver_module.SHOTS        = args.shots
     _solver_module.SEED         = args.seed
 
+    print(_solver_module.USE_PYQUIL)
+    
     # -- Set up quantum computer if using QAOA ---------------------------------
     qc_name = args.qc
-    if args.qaoa and qc_name:
-        _solver_module.setup_qpu(qc_name)
+    if args.qaoa:
+        _solver_module.setup_quantum_computer(qc_name)
 
     # -- Print run config ------------------------------------------------------
     print("=" * 60)
     print("  DC-QAOA Weighted Max-Cut Pipeline")
     print("=" * 60)
-    print(f"  Graph      : {graph_path.resolve()}")
+    print(f"  Graph      : {graph_path}")
     print(f"  Backend    : {'pyQuil QAOA' if args.qaoa else 'stub (local)'}")
     if args.qaoa:
         print(f"  QC target  : {qc_name or 'auto (Nq-qvm)'}")

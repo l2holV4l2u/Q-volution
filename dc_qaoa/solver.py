@@ -2,7 +2,7 @@
 solver.py -- QAOA solver for weighted Max-Cut on a subgraph.
 
 Public API:
-    setup_qpu(qc_name)                    # call once before pipeline
+    setup_quantum_computer(qc_name)                    # call once before pipeline
     qaoa_solve(subgraph, top_t) -> list[Solution]
 
 Two backends -- switch via USE_PYQUIL flag:
@@ -42,7 +42,7 @@ from .scorer import maxcut_score
 Solution = dict  # {node_id: +1 | -1}
 
 # -- User-facing knobs --------------------------------------------------------
-USE_PYQUIL   = False   # set True when pyquil is installed & QVM/QPU ready
+USE_PYQUIL = False   # set True when pyquil is installed & QVM/QPU ready
 MIXER_MODE   = "X"     # "X" (standard), "XX" (graph-coupled), "XY" (XY-mixer)
 LAYER_COUNT  = 1       # QAOA depth p  (p=1 for noisy hardware; increase for sim)
 SHOTS        = 1024    # measurement shots per circuit run
@@ -58,7 +58,7 @@ try:
 except ImportError:
     _PYQUIL_AVAILABLE = False
 
-# Global quantum computer reference (set by setup_qpu)
+# Global quantum computer reference (set by setup_quantum_computer)
 _QC = None
 
 
@@ -66,7 +66,7 @@ _QC = None
 # QPU / QVM configuration (call once before running the pipeline)
 # ---------------------------------------------------------------------------
 
-def setup_qpu(qc_name: str = "8q-qvm") -> None:
+def setup_quantum_computer(qc_name: str = "8q-qvm") -> None:
     """
     Configure the pyQuil quantum computer target.
 
@@ -80,12 +80,13 @@ def setup_qpu(qc_name: str = "8q-qvm") -> None:
     For QVM simulation: run `quilc -S` and `qvm -S` in separate terminals.
     For QPU access: configure QCS credentials via `qcs auth login`.
     """
-    global _QC
+    global _QC, USE_PYQUIL
     if not _PYQUIL_AVAILABLE:
         raise RuntimeError(
             "pyquil is not installed. Run: pip install pyquil"
         )
     _QC = get_qc(qc_name)
+    USE_PYQUIL = True
     print(f"[solver] Quantum computer set -> {qc_name}")
 
 
@@ -240,7 +241,7 @@ def _pyquil_backend(subgraph: nx.Graph, nodes: list) -> list[Solution]:
     """
     Run weighted QAOA via pyQuil and return sampled solutions.
 
-    Requires `setup_qpu()` to have been called, or uses default QVM.
+    Requires `setup_quantum_computer()` to have been called, or uses default QVM.
     """
     global _QC
 
