@@ -16,7 +16,7 @@ def load_graph(path: str | Path) -> nx.Graph:
 
     Returns a nx.Graph with integer node IDs and 'weight' edge attributes.
     """
-
+    
     G = nx.Graph()
     path = Path(path)
     suffix = path.suffix

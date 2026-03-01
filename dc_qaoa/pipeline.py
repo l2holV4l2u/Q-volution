@@ -19,14 +19,14 @@ import networkx as nx
 try:
     from graph_loader import load_graph
     from partitioner import recursive_partition
-    from solver import qaoa_solve, setup_quantum_computer, _local_search
+    from solver import qaoa_solve, setup_qpu, _local_search
     import solver as _solver
     from merger import merge
     from scorer import maxcut_score
 except ImportError:
     from .graph_loader import load_graph
     from .partitioner import recursive_partition
-    from .solver import qaoa_solve, setup_quantum_computer, _local_search
+    from .solver import qaoa_solve, setup_qpu, _local_search
     from . import solver as _solver
     from .merger import merge
     from .scorer import maxcut_score
@@ -59,7 +59,7 @@ def run_pipeline(
     # ------------------------------------------------------------------ 0 --
     if qc_name:
         print(f"\n=== Step 0: Configure quantum computer ({qc_name}) ===")
-        setup_quantum_computer(qc_name)
+        setup_qpu(qc_name)
     elif _solver.USE_PYQUIL:
         print("\n[pipeline] USE_PYQUIL=True -- QC will be auto-configured per subgraph.")
 
