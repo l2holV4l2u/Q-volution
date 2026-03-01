@@ -5,8 +5,8 @@ bruteforce.py -- Find optimal / upper-bound Max-Cut score.
   Dataset B (180 nodes): SDP relaxation upper bound + simulated annealing best-known
 
 Usage:
-  python bruteforce.py ../dataset_A.parquet
-  python bruteforce.py ../dataset_B.parquet
+  python tools/bruteforce.py ../dataset_A.parquet
+  python tools/bruteforce.py ../dataset_B.parquet
 """
 import itertools
 import math
@@ -18,12 +18,8 @@ from pathlib import Path
 import numpy as np
 import networkx as nx
 
-try:
-    from graph_loader import load_graph
-    from scorer import maxcut_score
-except ImportError:
-    from .graph_loader import load_graph
-    from .scorer import maxcut_score
+from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.solver import maxcut_score
 
 
 # ---------------------------------------------------------------------------
@@ -62,9 +58,7 @@ def sdp_upper_bound(G: nx.Graph) -> float:
     # SDP variable: n x n positive semidefinite matrix with diag = 1
     X = cp.Variable((n, n), symmetric=True)
 
-    # Objective: maximize (1/4) * sum w_ij * (1 - X_ij)  [equivalent to max-cut SDP]
-    # Which equals (1/2) * sum w_ij * (1 - X_ij) / 2  ... wait
-    # Standard: max (1/2) sum w_ij (1 - x_i . x_j) = max (1/2) sum w_ij (1 - X_ij)
+    # Objective: maximize (1/2) sum w_ij (1 - X_ij)
     obj = 0
     for u, v, d in G.edges(data=True):
         w = d.get("weight", 1.0)

@@ -2,8 +2,8 @@
 visualize_cut.py -- Visualize the DC-QAOA Max-Cut result.
 
 Usage:
-  python visualize_cut.py ../dataset_A.parquet
-  python visualize_cut.py ../dataset_B.parquet
+  python tools/visualize_cut.py ../dataset_A.parquet
+  python tools/visualize_cut.py ../dataset_B.parquet
 """
 from __future__ import annotations
 
@@ -14,12 +14,13 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import networkx as nx
 
-try:
-    from graph_loader import load_graph
-    from pipeline import run_pipeline
-except ImportError:
-    from .graph_loader import load_graph
-    from .pipeline import run_pipeline
+from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.pipeline import run_pipeline
+
+# -- Pipeline config -----------------------------------------------------------
+MAX_SIZE = 8    # max subgraph size passed to DC-QAOA partitioner
+TOP_T    = 10   # top-t solutions kept per subgraph for merge
+# ------------------------------------------------------------------------------
 
 def visualize(G: nx.Graph, assignment: dict, score: float, title: str = "DC-QAOA Max-Cut", out_file: str = "maxcut.png"):
     total_weight = sum(d.get("weight", 1.0) for _, _, d in G.edges(data=True))
@@ -102,7 +103,7 @@ def main():
     dataset_name = Path(graph_path).stem
 
     print(f"Running DC-QAOA on {graph_path}...")
-    assignment, score = run_pipeline(graph_path, max_size=8, top_t=10)
+    assignment, score = run_pipeline(graph_path, max_size=MAX_SIZE, top_t=TOP_T)
 
     G = load_graph(graph_path)
     print(f"Score: {score:.2f}")

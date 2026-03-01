@@ -1,2 +1,29 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 *.ipynb
-*.pyc
+
+# Distribution / build
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Output files
+*.json
+*.png
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

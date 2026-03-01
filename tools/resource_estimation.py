@@ -5,8 +5,8 @@ Demonstrates why standard QAOA is infeasible for Problem B (180 nodes)
 on Rigetti Ankaa-3, and how DC-QAOA makes it tractable.
 
 Usage:
-    python resource_estimation.py ../dataset_B.parquet
-    python resource_estimation.py ../dataset_A.parquet ../dataset_B.parquet
+    python tools/resource_estimation.py ../dataset_B.parquet
+    python tools/resource_estimation.py ../dataset_A.parquet ../dataset_B.parquet
 """
 from __future__ import annotations
 
@@ -16,12 +16,8 @@ from pathlib import Path
 
 import networkx as nx
 
-try:
-    from graph_loader import load_graph
-    from partitioner import recursive_partition
-except ImportError:
-    from .graph_loader import load_graph
-    from .partitioner import recursive_partition
+from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.partitioner import recursive_partition
 
 
 # -- Ankaa-3 hardware limits --------------------------------------------------
@@ -181,7 +177,7 @@ def main():
     if len(sys.argv) < 2:
         candidates = sorted(Path("..").glob("*.parquet"))
         if not candidates:
-            print("Usage: python resource_estimation.py <graph.parquet> [graph2.parquet ...]")
+            print("Usage: python tools/resource_estimation.py <graph.parquet> [graph2.parquet ...]")
             sys.exit(1)
         paths = [str(c) for c in candidates]
     else:

@@ -1,22 +1,11 @@
 """
 partitioner.py — Recursive vertex-separator partitioning.
 
-Two strategies available (select via `method` param in recursive_partition):
-
-  "community"  — greedy_modularity_communities (NVIDIA Lab 4 approach).
-                 Fast, works well on weighted graphs. Does NOT guarantee a
-                 strict minimum separator; border edges become the implicit
-                 separator.
-
-  "separator"  — NaiveLGP-style incremental minimum vertex separator
-                 (PaddlePaddle / Junde Li et al. approach).
-                 Finds the smallest possible separator set S by removing
-                 increasing numbers of vertices until the graph disconnects.
-                 Slow for large dense graphs but gives the tightest
-                 2^|S| enumeration budget for the merger.
-
-For the target graph (~180 nodes, ~2.5 avg degree) both strategies are fast.
-"separator" is recommended because small |S| keeps the merge cheap.
+Uses NaiveLGP-style incremental minimum vertex separator
+(PaddlePaddle / Junde Li et al. approach).
+Finds the smallest possible separator set S by removing
+increasing numbers of vertices until the graph disconnects.
+Small |S| keeps the 2^|S| merge enumeration cheap.
 """
 from __future__ import annotations
 
@@ -81,50 +70,6 @@ def naive_lgp(G: nx.Graph, max_sep_size: int = 8) -> tuple[set, set, set]:
 
 
 # ---------------------------------------------------------------------------
-# Strategy 2: greedy_modularity_communities (NVIDIA Lab 4 approach)
-# ---------------------------------------------------------------------------
-
-def community_partition(G: nx.Graph) -> tuple[set, set, set]:
-    """
-    Partition using greedy modularity community detection.
-
-    Uses weight='weight' so edge weights influence community assignment.
-    Returns (A, S, B) where S = border nodes (nodes with inter-community edges).
-    """
-    from networkx.algorithms import community as nx_community
-
-    parts = list(
-        nx_community.greedy_modularity_communities(
-            G, weight="weight", resolution=1.1
-        )
-    )
-
-    if len(parts) < 2:
-        # Fallback: bisect by node order
-        nodes = list(G.nodes())
-        mid = len(nodes) // 2
-        parts = [set(nodes[:mid]), set(nodes[mid:])]
-
-    # Merge into two groups (take first vs rest)
-    A = set(parts[0])
-    B = set().union(*parts[1:])
-
-    # Separator = border nodes (nodes in A that have a neighbour in B)
-    S = set()
-    for u in A:
-        for v in G.neighbors(u):
-            if v in B:
-                S.add(u)
-                S.add(v)
-
-    # Remove separator from A and B (they'll be added back to both)
-    A -= S
-    B -= S
-
-    return A, S, B
-
-
-# ---------------------------------------------------------------------------
 # Subgraph builder
 # ---------------------------------------------------------------------------
 
@@ -147,7 +92,6 @@ def build_subgraphs(
 def recursive_partition(
     G: nx.Graph,
     max_size: int = 84,
-    method: str = "separator",   # "separator" | "community"
 ) -> PartitionNode:
     """
     Recursively partition G until all leaves have ≤ max_size nodes.
@@ -155,18 +99,16 @@ def recursive_partition(
     Args:
         G:        Input graph.
         max_size: Qubit budget per subgraph (default 84).
-        method:   Partitioning strategy — "separator" (NaiveLGP, recommended)
-                  or "community" (greedy modularity, faster for large graphs).
 
     Returns the root PartitionNode of the partition tree.
     """
     root = PartitionNode(graph=G, separator=set())
-    _partition_recursive(root, max_size, method)
+    _partition_recursive(root, max_size)
     return root
 
 
 def _partition_recursive(
-    node: PartitionNode, max_size: int, method: str
+    node: PartitionNode, max_size: int
 ) -> None:
     G = node.graph
 
@@ -176,13 +118,10 @@ def _partition_recursive(
 
     print(
         f"[partitioner] Splitting: {G.number_of_nodes()} nodes, "
-        f"{G.number_of_edges()} edges  (method={method})"
+        f"{G.number_of_edges()} edges"
     )
 
-    if method == "separator":
-        A, S, B = naive_lgp(G)
-    else:
-        A, S, B = community_partition(G)
+    A, S, B = naive_lgp(G)
 
     if not A or not B:
         print(
@@ -204,5 +143,5 @@ def _partition_recursive(
     node.left = PartitionNode(graph=left_G, separator=set())
     node.right = PartitionNode(graph=right_G, separator=set())
 
-    _partition_recursive(node.left, max_size, method)
-    _partition_recursive(node.right, max_size, method)
+    _partition_recursive(node.left, max_size)
+    _partition_recursive(node.right, max_size)

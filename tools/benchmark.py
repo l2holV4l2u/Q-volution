@@ -6,7 +6,7 @@ Baselines:
   2. Greedy construction     -- assign each node to maximize marginal cut gain
   3. NetworkX one_exchange   -- greedy heuristic from NetworkX (problem statement baseline)
   4. Random + local search   -- many random starts polished with hill-climbing
-  5. DC-QAOA pipeline (stub) -- the full divide-and-conquer pipeline
+  5. DC-QAOA pipeline (classical backend) -- the full divide-and-conquer pipeline
 
 For reference, the theoretical best classical guarantee is:
   - Goemans-Williamson SDP: 0.878 approximation ratio (requires cvxpy)
@@ -21,14 +21,14 @@ from pathlib import Path
 
 import networkx as nx
 
-try:
-    from graph_loader import load_graph
-    from scorer import maxcut_score
-    from solver import _local_search
-except ImportError:
-    from .graph_loader import load_graph
-    from .scorer import maxcut_score
-    from .solver import _local_search
+from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.solver import maxcut_score
+from dc_qaoa.solver import local_search
+
+# -- Pipeline config -----------------------------------------------------------
+MAX_SIZE = 84   # max subgraph size passed to DC-QAOA partitioner
+TOP_T    = 10   # top-t solutions kept per subgraph for merge
+# ------------------------------------------------------------------------------
 
 
 def random_assignment(G: nx.Graph, trials: int = 1000) -> tuple[dict, float]:
@@ -68,7 +68,7 @@ def greedy_construction(G: nx.Graph) -> tuple[dict, float]:
         sol[v] = 1 if score_pos >= score_neg else -1
 
     # Polish with local search
-    sol = _local_search(G, list(G.nodes()), dict(sol))
+    sol = local_search(G, list(G.nodes()), dict(sol))
     return sol, maxcut_score(G, sol)
 
 
@@ -79,7 +79,7 @@ def random_local_search(G: nx.Graph, trials: int = 500) -> tuple[dict, float]:
     best_score = -1.0
     for _ in range(trials):
         sol = {v: random.choice([-1, 1]) for v in nodes}
-        sol = _local_search(G, nodes, sol)
+        sol = local_search(G, nodes, sol)
         s = maxcut_score(G, sol)
         if s > best_score:
             best_score = s
@@ -92,29 +92,14 @@ def nx_one_exchange(G: nx.Graph) -> tuple[dict, float]:
     NetworkX one_exchange greedy heuristic for Max-Cut.
     This is the baseline suggested by the problem statement.
     """
-    from networkx.algorithms.cuts import cut_size
     partition = nx.algorithms.community.kernighan_lin_bisection(G, weight="weight")
-    # one_exchange is a local search that swaps single nodes between partitions
-    cut_val = cut_size(G, partition[0], weight="weight")
     # Convert partition to spin assignment
     sol = {}
     for v in G.nodes():
         sol[v] = 1 if v in partition[0] else -1
     # Polish with our local search for fair comparison
-    sol = _local_search(G, list(G.nodes()), sol)
+    sol = local_search(G, list(G.nodes()), sol)
     return sol, maxcut_score(G, sol)
-
-
-def run_pipeline_benchmark(graph_path: str) -> tuple[dict, float, float]:
-    """Run the full DC-QAOA pipeline and return (assignment, score, elapsed)."""
-    try:
-        from pipeline import run_pipeline
-    except ImportError:
-        from .pipeline import run_pipeline
-    t0 = time.time()
-    assignment, score = run_pipeline(graph_path, max_size=84, top_t=10)
-    elapsed = time.time() - t0
-    return assignment, score, elapsed
 
 
 def main():
@@ -173,9 +158,12 @@ def main():
     results.append(("Random+LS (500 trials)", score_rls, t_rls))
 
     # --- DC-QAOA pipeline ---
-    print("[5/5] DC-QAOA pipeline (stub backend)...")
-    _, score_dcqaoa, t_dcqaoa = run_pipeline_benchmark(graph_path)
-    results.append(("DC-QAOA pipeline (stub)", score_dcqaoa, t_dcqaoa))
+    from dc_qaoa.pipeline import run_pipeline
+    print("[5/5] DC-QAOA pipeline (classical backend)...")
+    t0 = time.time()
+    _, score_dcqaoa = run_pipeline(graph_path, max_size=MAX_SIZE, top_t=TOP_T)
+    t_dcqaoa = time.time() - t0
+    results.append(("DC-QAOA pipeline (classical)", score_dcqaoa, t_dcqaoa))
 
     # --- Theoretical bounds ---
     expected_random = total_weight * 0.5

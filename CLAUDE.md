@@ -36,42 +36,47 @@ via GR policy with 2^|S| separator enumeration.
 
 ## File Structure
 ```
+main.py                       # CLI entry point (--quantum, --qc flags)
 dc_qaoa/
-├── graph_loader.py         # parquet -> nx.Graph (auto-detects column names)
+├── config.py               # Runtime constants (SHOTS, LAYER_COUNT, SEED, …)
+├── graph_loader.py         # parquet/csv -> nx.Graph (auto-detects column names)
 ├── partitioner.py          # recursive vertex-separator partitioning -> PartitionNode tree
-├── solver.py               # QAOA backend (pyQuil) + stub for local testing
+├── solver.py               # backend dispatch + maxcut_score
+├── quantum_backend.py      # pyQuil QAOA circuit + dual_annealing optimisation
+├── classical_backend.py    # exact brute-force over all 2^n assignments
 ├── merger.py               # top-t merge with 2^|S| separator enumeration (GR policy)
-├── scorer.py               # maxcut_score(G, assignment) objective
-├── pipeline.py             # 6-step orchestration (partition -> solve -> merge -> polish)
-├── main.py                 # CLI entry point
-├── benchmark.py            # Compare pipeline vs classical baselines
+└── pipeline.py             # 5-step orchestration (load -> partition -> solve -> merge -> score)
+tools/
+├── benchmark.py            # Compare DC-QAOA vs classical baselines
 ├── bruteforce.py           # Exact brute-force optimal (Dataset A only, 2^21)
 ├── visualize_cut.py        # Visualize Max-Cut result on graph
-└── resource_estimation.py  # Resource analysis: standard QAOA vs DC-QAOA
+├── resource_estimation.py  # Resource analysis: standard QAOA vs DC-QAOA
+└── test_qvm.py             # Smoke test against local QVM (Docker)
+```
+
+## Setup
+```bash
+pip install .
+# Optional extras for tools/
+pip install matplotlib cvxpy pyquil
 ```
 
 ## Running
 ```bash
-pip install pandas pyarrow networkx numpy scipy pyquil
-
-# Local testing (stub backend, no QPU needed)
-python main.py ../dataset_A.parquet
-python main.py --max-size 8 --top-t 10 --output result.json ../dataset_B.parquet
+# Classical backend (no hardware needed)
+python main.py datasets/dataset_A.parquet
 
 # QVM simulation (requires quilc -S and qvm -S running)
-python main.py --qaoa --qc 8q-qvm ../dataset_A.parquet
+python main.py --quantum --qc 8q-qvm datasets/dataset_A.parquet
 
 # Rigetti QPU (requires QCS credentials via `qcs auth login`)
-python main.py --qaoa --qc Ankaa-3 ../dataset_B.parquet
-
-# Hardware preset (enables QAOA, max_size=8, p=1, 1024 shots)
-python main.py --hardware ../dataset_B.parquet
+python main.py --quantum --qc Ankaa-3 datasets/dataset_B.parquet
 
 # Resource estimation report
-python resource_estimation.py ../dataset_B.parquet
+python tools/resource_estimation.py datasets/dataset_B.parquet
 
 # Benchmark vs classical baselines
-python benchmark.py ../dataset_B.parquet
+python tools/benchmark.py datasets/dataset_B.parquet
 ```
 
 ## Resource Estimation
@@ -105,16 +110,11 @@ After merging, a final greedy local search pass runs on the full graph to squeez
 out any remaining improvement from cross-partition interactions.
 
 ### Solver backends
-- **Stub (default):** brute-force <=24 nodes, random+local-search otherwise.
-  Local search uses O(deg(v)) delta scoring. For local pipeline testing.
-- **pyQuil QAOA (`--qaoa`):** weighted QAOA circuit with CNOT-Rz-CNOT cost layers
-  (quilc compiles to native CZ/iSWAP), Rx mixer, multi-start COBYLA (5 inits).
-  Parametric circuit compiled once, run many times via memory_map.
-  Logs native 2Q gate count estimate per subgraph and warns if >100.
-
-### QAOA multi-start
-The pyQuil backend runs COBYLA from 5 random initial parameter vectors and keeps
-the best result, avoiding poor local minima in the VQE landscape.
+- **Classical (default):** exact brute-force over all 2^n spin assignments.
+- **pyQuil QAOA (`--quantum`):** weighted QAOA circuit with CNOT-RZ-CNOT cost layers
+  (quilc compiles to native CZ/iSWAP), configurable mixer (X/XX/XY).
+  Parametric circuit compiled once, run many times via `memory_map`.
+  Angles optimised with `scipy.dual_annealing` (SA_MAXITER iterations).
 
 ## Data Structures
 ```python
@@ -131,9 +131,8 @@ Solution = dict[int, int]  # {node_id: +1 | -1}
 
 ## Partitioning Strategy
 1. NaiveLGP -- minimum vertex separator (tries sep_size=1,2,...,8)
-2. Community-based fallback (greedy modularity)
-3. Simple half-split last resort for degenerate cases
-4. Recursion stops when subgraph has <= `max_size` nodes (default 8)
+2. Simple half-split fallback for degenerate cases (complete graph or single node)
+3. Recursion stops when subgraph has <= `max_size` nodes (default 8)
 
 ## Known Results (stub backend, max_size=8)
 | Dataset | Nodes | Score | Total Weight | Approx Ratio |
@@ -149,15 +148,17 @@ Solution = dict[int, int]  # {node_id: +1 | -1}
 DC-QAOA with max_size=8 matches the exact brute-force optimum on Dataset A.
 Dataset B (180 nodes, 2^180 assignments) is not brute-forceable.
 
-Run: `python bruteforce.py ../dataset_A.parquet`
+Run: `python tools/bruteforce.py datasets/dataset_A.parquet`
 
 ## Tuning Parameters
+Edit `dc_qaoa/config.py` directly to change defaults.
+
 | Parameter | Default | Effect |
 |-----------|---------|--------|
-| `max_size` | 8 | Max qubits per subgraph (hardware-compatible, all <=100 native 2Q gates) |
-| `top_t` | 10 | Solutions kept per subgraph -- higher = better merge quality, slower |
-| `--layers` | 1 | QAOA circuit depth p (p=1 for noisy hardware) |
-| `--shots` | 1024 | Measurement shots per QAOA circuit |
-| `--seed` | 42 | Random seed for reproducibility |
-| `--hardware` | off | Convenience preset: --qaoa --max-size 8 --layers 1 --shots 1024 |
-| `--qc` | auto | pyQuil quantum computer name (e.g. "8q-qvm", "Ankaa-3") |
+| `LAYER_COUNT` | 1 | QAOA circuit depth p (p=1 for noisy hardware) |
+| `SHOTS` | 1024 | Measurement shots per QAOA circuit |
+| `SEED` | 42 | Random seed for reproducibility |
+| `MIXER_MODE` | `"X"` | Mixer type: `"X"` (standard), `"XX"` (graph-coupled), `"XY"` |
+| `SA_MAXITER` | 1000 | Simulated annealing iterations (quantum backend only) |
+
+Pipeline parameters (`max_size`, `top_t`) are hardcoded in `run_pipeline()` defaults (`max_size=8`, `top_t=10`).

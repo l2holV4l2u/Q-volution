@@ -1,8 +1,8 @@
-"""Package initializer for the DC-QAOA Max-Cut project.
+"""Package initializer for the DC-QAOA Max-Cut solver.
 
 This turns the ``dc_qaoa`` directory into an importable Python package.  It
-re-exports the most important submodules so that users can ``import
-dc_qaoa`` and access the core functionality programmatically.
+re-exports the core solver submodules so that users can ``import dc_qaoa``
+and access the pipeline programmatically.
 
 Example::
 
@@ -10,31 +10,25 @@ Example::
     >>> from dc_qaoa import pipeline
     >>> result, score = pipeline.run_pipeline("graph.parquet")
 
+Tooling scripts (benchmark, resource estimation, visualization, QVM test)
+live in the ``tools/`` directory alongside this package.
 """
 
 from __future__ import annotations
 
-# ``main.py`` lives alongside the package and is not part of the
-# dc_qaoa package itself, so we don’t import it here.  Consumers can run the
-# CLI via ``python -m dc_qaoa.main`` or use the installed console script.
-
 # package metadata
 __version__ = "0.1.0"
 
-# public API
+# public API -- core solver modules only
 __all__ = [
+    "config",
     "graph_loader",
     "partitioner",
+    "classical_backend",
+    "quantum_backend",
     "solver",
     "merger",
-    "scorer",
     "pipeline",
-    "visualize_cut",
-    "resource_estimation",
-    "benchmark",
-    "bruteforce",
 ]
 
-from . import graph_loader, partitioner, solver, merger, scorer
-from . import pipeline, visualize_cut, resource_estimation
-from . import benchmark, bruteforce
+from . import config, graph_loader, partitioner, classical_backend, quantum_backend, solver, merger, pipeline
