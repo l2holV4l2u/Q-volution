@@ -1,0 +1,12 @@
+# Core dependencies (always required)
+pandas>=2.0
+pyarrow>=14.0
+networkx>=3.2
+numpy>=1.26
+scipy>=1.12
+
+# pyQuil + QCS SDK -- required for real QAOA on Rigetti QPU/QVM
+# Also requires quilc and qvm servers for local simulation:
+#   quilc -S   (Quil compiler server)
+#   qvm -S     (Quantum Virtual Machine server)
+# pyquil>=4.0
