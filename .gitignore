@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 venv_qaoa/
 .venv_qaoa/
 dc_qaoa/__pycache__/
 dc_qaoa.egg-info/
+=======
+*.ipynb
+*.pyc
+>>>>>>> 9b9ab667fc1245e57bb95ca1cac927d58dd5eaeb

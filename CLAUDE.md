@@ -45,6 +45,8 @@ dc_qaoa/
 ├── pipeline.py             # 6-step orchestration (partition -> solve -> merge -> polish)
 ├── main.py                 # CLI entry point
 ├── benchmark.py            # Compare pipeline vs classical baselines
+├── bruteforce.py           # Exact brute-force optimal (Dataset A only, 2^21)
+├── visualize_cut.py        # Visualize Max-Cut result on graph
 └── resource_estimation.py  # Resource analysis: standard QAOA vs DC-QAOA
 ```
 
@@ -138,6 +140,16 @@ Solution = dict[int, int]  # {node_id: +1 | -1}
 |---------|-------|-------|-------------|-------------|
 | A | 21 | 3728.41 | 4215.67 | 0.8844 |
 | B | 180 | 7099.57 | 7465.71 | 0.9510 |
+
+## Exact Optimal (brute-force, Dataset A only)
+| Dataset | Optimal Score | Total Weight | Optimal Ratio |
+|---------|--------------|-------------|---------------|
+| A | 3728.41 | 4215.67 | 0.884419 |
+
+DC-QAOA with max_size=8 matches the exact brute-force optimum on Dataset A.
+Dataset B (180 nodes, 2^180 assignments) is not brute-forceable.
+
+Run: `python bruteforce.py ../dataset_A.parquet`
 
 ## Tuning Parameters
 | Parameter | Default | Effect |

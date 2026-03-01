@@ -18,8 +18,12 @@ from pathlib import Path
 import numpy as np
 import networkx as nx
 
-from .graph_loader import load_graph
-from .scorer import maxcut_score
+try:
+    from graph_loader import load_graph
+    from scorer import maxcut_score
+except ImportError:
+    from .graph_loader import load_graph
+    from .scorer import maxcut_score
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,16 @@
+services:
+  quilc:
+    image: rigetti/quilc
+    command: -S
+    ports:
+      - "5555:5555"
+      - "5556:5556"
+
+  qvm:
+    image: rigetti/qvm
+    command: -S
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+    depends_on:
+      - quilc
