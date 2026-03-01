@@ -17,6 +17,7 @@ Hardware preset (max_size=8, p=1, pyQuil enabled):
 """
 from __future__ import annotations
 
+
 import sys
 import json
 import random

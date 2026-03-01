@@ -2,7 +2,7 @@
 solver.py -- QAOA solver for weighted Max-Cut on a subgraph.
 
 Public API:
-    setup_quantum_computer(qc_name)                    # call once before pipeline
+    setup_qpu(qc_name)                    # call once before pipeline
     qaoa_solve(subgraph, top_t) -> list[Solution]
 
 Two backends -- switch via USE_PYQUIL flag:
@@ -37,21 +37,37 @@ import itertools
 import numpy as np
 import networkx as nx
 
-try:
-    from scorer import maxcut_score
-except ImportError:
-    from .scorer import maxcut_score
+from scorer import maxcut_score
 
 Solution = dict  # {node_id: +1 | -1}
 
 # -- User-facing knobs --------------------------------------------------------
-USE_PYQUIL = False   # set True when pyquil is installed & QVM/QPU ready
+USE_PYQUIL   = False   # set True when pyquil is installed & QVM/QPU ready
 MIXER_MODE   = "X"     # "X" (standard), "XX" (graph-coupled), "XY" (XY-mixer)
 LAYER_COUNT  = 1       # QAOA depth p  (p=1 for noisy hardware; increase for sim)
 SHOTS        = 1024    # measurement shots per circuit run
 SEED         = 42
-SA_MAXITER   = 1000    # simulated annealing max iterations
+NUM_STARTS   = 5       # multi-start COBYLA initializations
 # ------------------------------------------------------------------------------
+
+# -- Result stores populated by _pyquil_backend after each subgraph solve -----
+# Keyed by id(subgraph) so every DC-QAOA leaf gets its own record.
+#
+# OPTIMIZATION_HISTORY[id(subgraph)] -> list[list[float]]
+#   Outer list : one entry per COBYLA trial  (len = NUM_STARTS)
+#   Inner list : E[cut] at every objective function evaluation within that trial
+#   → used by the loss-curve notebook cell to plot convergence
+#
+# FINAL_PARAMETERS[id(subgraph)] -> dict
+#   "gammas"     list[float]  optimal cost angles  γ_1 … γ_p
+#   "betas"      list[float]  optimal mixer angles β_1 … β_p
+#   "best_e_cut" float        E[cut] at optimal params
+#   "best_trial" int          which multi-start trial won  (0-indexed)
+#   "mixer_mode" str
+#   "n_layers"   int          LAYER_COUNT (p)
+#   "n_qubits"   int
+OPTIMIZATION_HISTORY: dict = {}
+FINAL_PARAMETERS:     dict = {}
 
 # -- Try importing pyQuil ------------------------------------------------------
 try:
@@ -61,7 +77,7 @@ try:
 except ImportError:
     _PYQUIL_AVAILABLE = False
 
-# Global quantum computer reference (set by setup_quantum_computer)
+# Global quantum computer reference (set by setup_qpu)
 _QC = None
 
 
@@ -69,7 +85,7 @@ _QC = None
 # QPU / QVM configuration (call once before running the pipeline)
 # ---------------------------------------------------------------------------
 
-def setup_quantum_computer(qc_name: str = "8q-qvm") -> None:
+def setup_qpu(qc_name: str = "8q-qvm") -> None:
     """
     Configure the pyQuil quantum computer target.
 
@@ -83,13 +99,12 @@ def setup_quantum_computer(qc_name: str = "8q-qvm") -> None:
     For QVM simulation: run `quilc -S` and `qvm -S` in separate terminals.
     For QPU access: configure QCS credentials via `qcs auth login`.
     """
-    global _QC, USE_PYQUIL
+    global _QC
     if not _PYQUIL_AVAILABLE:
         raise RuntimeError(
             "pyquil is not installed. Run: pip install pyquil"
         )
     _QC = get_qc(qc_name)
-    USE_PYQUIL = True
     print(f"[solver] Quantum computer set -> {qc_name}")
 
 
@@ -244,7 +259,7 @@ def _pyquil_backend(subgraph: nx.Graph, nodes: list) -> list[Solution]:
     """
     Run weighted QAOA via pyQuil and return sampled solutions.
 
-    Requires `setup_quantum_computer()` to have been called, or uses default QVM.
+    Requires `setup_qpu()` to have been called, or uses default QVM.
     """
     global _QC
 
@@ -277,45 +292,82 @@ def _pyquil_backend(subgraph: nx.Graph, nodes: list) -> list[Solution]:
     prog_shots = prog.wrap_in_numshots_loop(SHOTS)
     executable = _QC.compile(prog_shots)
 
-    # Simulated Annealing optimization
-    from scipy.optimize import dual_annealing
-
+    # Multi-start COBYLA optimization
     parameter_count = 2 * LAYER_COUNT
-    bounds = [(-np.pi, np.pi)] * parameter_count
+    rng = np.random.default_rng(SEED)
 
-    def objective(params, _edges=edges, _exe=executable):
-        gammas_val = params[:LAYER_COUNT].tolist()
-        betas_val = params[LAYER_COUNT:].tolist()
+    best_cut = -float("inf")
+    best_params = None
+    best_trial_idx = -1
+    all_trials_history: list[list[float]] = []
 
-        result = _QC.run(
-            _exe,
-            memory_map={
-                "gammas": gammas_val,
-                "betas": betas_val,
-            },
+    for trial in range(NUM_STARTS):
+        trial_history: list[float] = []
+        x0 = rng.uniform(-np.pi, np.pi, parameter_count)
+
+        def objective(params, _edges=edges, _exe=executable, _hist=trial_history):
+            gammas_val = params[:LAYER_COUNT].tolist()
+            betas_val = params[LAYER_COUNT:].tolist()
+
+            result = _QC.run(
+                _exe,
+                memory_map={
+                    "gammas": gammas_val,
+                    "betas": betas_val,
+                },
+            )
+            bitstrings = np.array(result.get_register_map().get("ro"))
+
+            # Compute average cut value over all shots
+            total_cut = 0.0
+            for shot in range(len(bitstrings)):
+                for (u, v, w) in _edges:
+                    if bitstrings[shot, u] != bitstrings[shot, v]:
+                        total_cut += w
+            avg_cut = total_cut / len(bitstrings)
+            _hist.append(avg_cut)        # record E[cut] at this function eval
+            return -avg_cut  # minimize negative cut = maximize cut
+
+        from scipy.optimize import minimize as scipy_minimize
+        result = scipy_minimize(
+            objective,
+            x0,
+            method="COBYLA",
+            options={"maxiter": 200, "rhobeg": 0.5},
         )
-        bitstrings = np.array(result.get_register_map().get("ro"))
 
-        # Compute average cut value over all shots
-        total_cut = 0.0
-        for shot in range(len(bitstrings)):
-            for (u, v, w) in _edges:
-                if bitstrings[shot, u] != bitstrings[shot, v]:
-                    total_cut += w
-        avg_cut = total_cut / len(bitstrings)
-        return -avg_cut  # minimize negative cut = maximize cut
+        all_trials_history.append(trial_history)
+        trial_cut = -result.fun
+        if trial_cut > best_cut:
+            best_cut = trial_cut
+            best_params = result.x
+            best_trial_idx = trial
 
-    result = dual_annealing(
-        objective,
-        bounds=bounds,
-        seed=SEED,
-        maxiter=SA_MAXITER,
+    # Store per-trial E[cut] traces for loss-curve plotting
+    OPTIMIZATION_HISTORY[id(subgraph)] = all_trials_history
+
+    print(f"[solver] QAOA best E[cut]: {best_cut:.4f} (from {NUM_STARTS} starts)")
+
+    # Decompose flat parameter vector into named per-layer lists
+    gammas_opt = best_params[:LAYER_COUNT].tolist()
+    betas_opt  = best_params[LAYER_COUNT:].tolist()
+
+    # Store final optimised parameters
+    FINAL_PARAMETERS[id(subgraph)] = {
+        "gammas":      gammas_opt,
+        "betas":       betas_opt,
+        "best_e_cut":  best_cut,
+        "best_trial":  best_trial_idx,
+        "mixer_mode":  MIXER_MODE,
+        "n_layers":    LAYER_COUNT,
+        "n_qubits":    n,
+    }
+    print(
+        f"[solver] Optimal params | "
+        f"gammas={[f'{g:.4f}' for g in gammas_opt]} | "
+        f"betas={[f'{b:.4f}' for b in betas_opt]} | "
+        f"trial {best_trial_idx + 1}/{NUM_STARTS}"
     )
-
-    best_cut = -result.fun
-    best_params = result.x
-
-    print(f"[solver] QAOA best E[cut]: {best_cut:.4f} (simulated annealing)")
 
     # Sample the optimal circuit
     gammas_opt = best_params[:LAYER_COUNT].tolist()
