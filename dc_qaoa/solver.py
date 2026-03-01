@@ -37,7 +37,7 @@ import itertools
 import numpy as np
 import networkx as nx
 
-from .scorer import maxcut_score
+from scorer import maxcut_score
 
 Solution = dict  # {node_id: +1 | -1}
 
@@ -85,7 +85,7 @@ _QC = None
 # QPU / QVM configuration (call once before running the pipeline)
 # ---------------------------------------------------------------------------
 
-def setup_quantum_computer(qc_name: str = "8q-qvm") -> None:
+def setup_qpu(qc_name: str = "8q-qvm") -> None:
     """
     Configure the pyQuil quantum computer target.
 
