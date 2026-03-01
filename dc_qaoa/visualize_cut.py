@@ -14,8 +14,12 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import networkx as nx
 
-from graph_loader import load_graph
-from pipeline import run_pipeline
+try:
+    from graph_loader import load_graph
+    from pipeline import run_pipeline
+except ImportError:
+    from .graph_loader import load_graph
+    from .pipeline import run_pipeline
 
 def visualize(G: nx.Graph, assignment: dict, score: float, title: str = "DC-QAOA Max-Cut", out_file: str = "maxcut.png"):
     total_weight = sum(d.get("weight", 1.0) for _, _, d in G.edges(data=True))
