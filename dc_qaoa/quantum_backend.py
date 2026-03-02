@@ -94,8 +94,8 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
         print(f"[solver] Auto-configured QVM: {qc_name}")
 
     # Compile parametric circuit once
-    prog = _build_qaoa_circuit(n, edges, config.LAYER_COUNT, mixer_mode=config.MIXER_MODE)
-    executable = _QC.compile(prog.wrap_in_numshots_loop(config.SHOTS))
+    prog = _build_qaoa_circuit(n, edges, _config.LAYER_COUNT, mixer_mode=_config.MIXER_MODE)
+    executable = _QC.compile(prog.wrap_in_numshots_loop(_config.SHOTS))
 
     last_eval = {"x": None, "loss": None, "nfev": 0}
     iter_count = {"k": 0}
@@ -163,7 +163,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
             result = dual_annealing(
                 cost_func_estimator,
                 bounds=bounds,
-                maxiter=config.MAXITER,
+                maxiter=_config.MAXITER,
                 callback=cb_dual_annealing,
             )
 
@@ -171,7 +171,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
             result = differential_evolution(
                 cost_func_estimator,
                 bounds=bounds,
-                maxiter=config.MAXITER,
+                maxiter=_config.MAXITER,
                 callback=cb_differential_evolution,
             )
 
@@ -188,6 +188,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
                 cost_func_estimator,
                 z0,
                 method="COBYLA",
+                callback=cb_minimize,
                 options={"maxiter": _config.MAXITER, "rhobeg": 0.5},
             )
         case _:
@@ -200,15 +201,15 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
 
     print(f"[solver] QAOA best E[cut]: {cut_opt:.4f}")
 
-    gammas_opt = params_opt[:config.LAYER_COUNT].tolist()
-    betas_opt  = params_opt[config.LAYER_COUNT:].tolist()
+    gammas_opt = params_opt[:_config.LAYER_COUNT].tolist()
+    betas_opt  = cut_opt[_config.LAYER_COUNT:].tolist()
 
     FINAL_PARAMETERS[id(subgraph)] = {
         "gammas":      gammas_opt,
         "betas":       betas_opt,
         "best_e_cut":  cut_opt,
-        "mixer_mode":  config.MIXER_MODE,
-        "n_layers":    config.LAYER_COUNT,
+        "mixer_mode":  _config.MIXER_MODE,
+        "n_layers":    _config.LAYER_COUNT,
         "n_qubits":    n,
     }
     print(
