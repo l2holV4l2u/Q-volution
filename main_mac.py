@@ -13,9 +13,10 @@ Quantum on Rigetti QPU (requires qcs auth login):
 from __future__ import annotations
 
 import sys
-import time
 import argparse
 from pathlib import Path
+import os
+os.environ["QCS_SETTINGS_APPLICATIONS_QVM_URL"] = "http://127.0.0.1:6000"
 
 try:
     from dc_qaoa import config as _config
@@ -27,6 +28,7 @@ except ImportError:
     from dc_qaoa import solver as _solver_module
     from dc_qaoa.pipeline import run_pipeline
 
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="DC-QAOA Weighted Max-Cut Pipeline")
     p.add_argument("input", help="Path to graph .parquet file.")
@@ -35,13 +37,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--qc", type=str, default="8q-qvm",
                    help="pyQuil quantum computer name (only used with --quantum). "
                         "Examples: 8q-qvm | Ankaa-3")
-    p.add_argument("--optimizer",
-                   help="classical optimizer method")
     return p.parse_args()
 
 
 def main() -> None:
-    t_start = time.perf_counter()
     args = parse_args()
 
     graph_path = Path(args.input)
@@ -50,7 +49,6 @@ def main() -> None:
         sys.exit(1)
 
     _config.USE_QUANTUM = args.quantum
-    if args.optimizer: _config.OPTIMIZER = args.optimizer.upper()
 
     if args.quantum:
         _solver_module.setup_qpu(args.qc)
@@ -60,18 +58,15 @@ def main() -> None:
     print("=" * 60)
     print(f"  Graph   : {graph_path}")
     print(f"  Backend : {'quantum (pyQuil QAOA) -- ' + args.qc if args.quantum else 'classical'}")
-    if args.quantum: print(f" Optimization method: {_config.OPTIMIZER} ")
     print("=" * 60)
 
     assignment, score = run_pipeline(
         graph_path,
         qc_name=args.qc if args.quantum else None,
     )
-    t_end = time.perf_counter()
 
     print(f"\n{'=' * 60}")
     print(f"  FINAL Max-Cut score = {score:.6f}")
-    print(f"  Total time elapsed: {t_end-t_start:.2f} seconds")
     print(f"{'=' * 60}")
 
 
