@@ -4,7 +4,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
-
+from pyquil import Program, get_qc
 import dc_qaoa.config
 
 from pathlib import Path
@@ -74,17 +74,21 @@ def plot_loss_history(loss_history: list[float], title: str = "QAOA Training Los
     plt.show()
 
 
-
+  # Default quantum computer (can be overridden by setup_qpu)
 def plot_QAOA_landscape(prog, subgraph, GRID, title: str = "QAOA Parameter Landscape"):
     """Plot the QAOA parameter landscape for 2 parameters (gamma_1, beta_1)."""
-    gamma_vals = np.linspace(-np.pi, np.pi, GRID)
-    beta_vals  = np.linspace(-np.pi, np.pi, GRID)
+    gamma_vals = np.linspace(-np.pi/2, np.pi/2, GRID/4)
+    beta_vals  = np.linspace(-np.pi/2, np.pi/2, GRID/4)
+    SHOTS = 1024
     
     landscape = np.zeros((GRID, GRID))
     for i, gamma in enumerate(gamma_vals):
         for j, beta in enumerate(beta_vals):
             params = {"gammas": [gamma], "betas": [beta]}
-            result = _solver_module._QC.run(prog, memory_map=params)
+
+            _QC = get_qc("8q-qvm")
+            executable = _QC.compile(prog.wrap_in_numshots_loop(SHOTS))
+            result     = _QC.run(executable, memory_map=params)
             bitstrings = np.array(result.get_register_map().get("ro"))
             total_cut = sum(w for shots in bitstrings for (u, v, w) in prog.edges if shots[u] != shots[v])
             landscape[i, j] = total_cut
