@@ -39,6 +39,9 @@ _QC = None
 
 # ── Result store ───────────────────────────────────────────────────────────────
 FINAL_PARAMETERS: dict = {}  # id(subgraph) -> dict
+PARAMS_PATHS: dict = {}       # id(subgraph) -> parameter space's trajectory (list of dicts)
+LOSS_HISTORY: dict = {}      # id(subgraph) -> list[float]
+
 
 
 def setup_qpu(qc_name: str = "8q-qvm") -> None:
@@ -87,6 +90,9 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
     prog = _build_qaoa_circuit(n, edges, config.LAYER_COUNT, mixer_mode=config.MIXER_MODE)
     executable = _QC.compile(prog.wrap_in_numshots_loop(config.SHOTS))
 
+    last_eval = {"x": None, "loss": None, "nfev": 0}
+    iter_count = {"k": 0}
+
     def objective(params):
         gammas_val = params[:config.LAYER_COUNT].tolist()
         betas_val  = params[config.LAYER_COUNT:].tolist()
@@ -98,7 +104,50 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
             for (u, v, w) in edges
             if bitstrings[shot, u] != bitstrings[shot, v]
         )
-        return -(total_cut / len(bitstrings))
+        loss = -(total_cut / len(bitstrings))
+        last_eval["x"] = np.array(params, dtype=float, copy=True)
+        last_eval["loss"] = float(loss)
+        last_eval["nfev"] += 1
+
+        LOSS_HISTORY[id(subgraph)].append(float(loss))
+        PARAMS_PATHS[id(subgraph)].append(last_eval["x"].tolist())
+
+        return loss
+    
+    # callback functions
+    def cb_dual_annealing(xk, f, context):
+        iter_count["k"] += 1
+        PARAMS_PATHS[id(subgraph)].append({
+            "iter": iter_count["k"],
+            "nfev": last_eval["nfev"],
+            "loss": last_eval["loss"],
+            "params": np.array(xk, dtype=float, copy=True),
+            "context": int(context),
+        })
+        return False
+    
+    def cb_minimize(xk):
+        iter_count["k"] += 1
+        PARAMS_PATHS[id(subgraph)].append({
+            "iter": iter_count["k"],
+            "nfev": last_eval["nfev"],
+            "loss": last_eval["loss"],
+            "params": np.array(xk, dtype=float, copy=True),
+        })
+
+    def cb_differential_evolution(xk, convergence):
+        iter_count["k"] += 1
+        PARAMS_PATHS[id(subgraph)].append({
+            "iter": iter_count["k"],
+            "nfev": last_eval["nfev"],
+            "loss": last_eval["loss"],
+            "params": np.array(xk, dtype=float, copy=True),
+            "convergence": float(convergence),
+        })
+        return False
+    
+
+
 
     bounds = [(-np.pi, np.pi)] * (2 * config.LAYER_COUNT)
     
@@ -111,25 +160,32 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
                 objective,
                 bounds=bounds,
                 maxiter=config.MAXITER,
+                callback=cb_dual_annealing,
             )
+
         case "DE":
             result = differential_evolution(
                 objective,
                 bounds=bounds,
-                maxiter=config.MAXITER
+                maxiter=config.MAXITER,
+                callback=cb_differential_evolution,
             )
+
         case "SLSQP":
             result = minimize(
                 objective,
                 trial,
                 method="SLSQP",
-                options={"maxiter": 200, "rhobeg": 0.5},
+                callback=cb_minimize,
+                options={"maxiter": 200},
             )
+
         case "COBYLA":
             result = minimize(
                 objective,
                 trial,
                 method="COBYLA",
+                callback=cb_minimize,
                 options={"maxiter": 200, "rhobeg": 0.5},
             )
         case _:
@@ -141,7 +197,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
     print(f"[solver] QAOA best E[cut]: {cut_opt:.4f}")
 
     gammas_opt = params_opt[:config.LAYER_COUNT].tolist()
-    betas_opt  = cut_opt[config.LAYER_COUNT:].tolist()
+    betas_opt  = params_opt[config.LAYER_COUNT:].tolist()
 
     FINAL_PARAMETERS[id(subgraph)] = {
         "gammas":      gammas_opt,
