@@ -21,45 +21,45 @@ def MEASURE_ZZ(counts, i, j):
 def U_C(edges: edges, param: MemoryReference) -> tuple[Gate]:
     gate = ()
     for (u, v, w) in edges:
-        gate += CNOT(u, v)
-        gate += RZ(param * (-w), v)
-        gate += CNOT(u, v)
+        gate += (CNOT(u, v), )
+        gate += (RZ(param * (-w), v), )
+        gate += (CNOT(u, v), )
     return gate
 
 def U_X(n_qubits : int, param: MemoryReference) -> tuple[Gate]:
     gate = ()
     for q in range(n_qubits):
-        gate += RX(param * 2.0, q)
+        gate += (RX(param * 2.0, q), )
     return gate
 
 def U_XX(edges: edges, param: MemoryReference) -> tuple[Gate]:
     gate = ()
     for (u, v, _w) in edges:
-        gate += H(u)
-        gate += H(v)
-        gate += CNOT(u, v)
-        gate += RZ(param * 2.0, v)
-        gate += CNOT(u, v)
-        gate += H(u)
-        prog += H(v)
+        gate += (H(u), )
+        gate += (H(v), )
+        gate += (CNOT(u, v), )
+        gate += (RZ(param * 2.0, v), )
+        gate += (CNOT(u, v), )
+        gate += (H(u), )
+        prog += (H(v), )
     return gate
 
 def U_XY(edges: edges, param: MemoryReference) -> tuple[Gate]:
     gate = ()
     for (u, v, _) in edges:
         # exp(-i * beta/2 * XX)
-        gate += H(u);  gate += H(v)
-        gate += CNOT(u, v)
-        gate += RZ(param, v)
-        gate += CNOT(u, v)
-        gate += H(u);  gate += H(v)
+        gate += (H(u), );  gate += (H(v), )
+        gate += (CNOT(u, v), )
+        gate += (RZ(param, v), )
+        gate += (CNOT(u, v), )
+        gate += (H(u), );  gate += (H(v), )
         
         # exp(-i * beta/2 * YY)
-        gate += RX(np.pi / 2, u);  gate += RX(np.pi / 2, v)
-        gate += CNOT(u, v)
-        gate += RZ(param, v)
-        gate += CNOT(u, v)
-        gate += RX(-np.pi / 2, u); gate += RX(-np.pi / 2, v)
+        gate += (RX(np.pi / 2, u), );  gate += (RX(np.pi / 2, v), )
+        gate += (CNOT(u, v), )
+        gate += (RZ(param, v), )
+        gate += (CNOT(u, v), )
+        gate += (RX(-np.pi / 2, u), ); gate += (RX(-np.pi / 2, v), )
     
     return gate
 
@@ -93,12 +93,12 @@ def _build_qaoa_circuit(
     # QAOA gate layer
     for layer in range(p_layers):
         # Cost layer
-        prog += U_C(edges, gammas[layer])
+        prog.inst(*U_C(edges, gammas[layer]))
 
         # Mixer layer
-        if mixer_mode == "X": prog += U_X(n_qubits, betas[layer])
-        elif mixer_mode == "XX": prog += U_XX(edges, betas)
-        elif mixer_mode == "XY": prog += U_XY(edges, betas)
+        if mixer_mode == "X": prog.inst(*U_X(n_qubits, betas[layer]))
+        elif mixer_mode == "XX": prog.inst(*U_XX(edges, betas[layer]))
+        elif mixer_mode == "XY": prog.inst(*U_XY(edges, betas[layer]))
         else:
             raise ValueError(f"mixer mode: {mixer_mode!r} is not supported")
 
