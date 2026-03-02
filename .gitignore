@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python cache
 __pycache__/
 *.py[cod]
@@ -27,3 +28,14 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+=======
+<<<<<<< HEAD
+venv_qaoa/
+.venv_qaoa/
+dc_qaoa/__pycache__/
+dc_qaoa.egg-info/
+=======
+*.ipynb
+*.pyc
+>>>>>>> 9b9ab667fc1245e57bb95ca1cac927d58dd5eaeb
+>>>>>>> 89a23a9231413d4759cfbb2d4cf2dbe668e0d9c5

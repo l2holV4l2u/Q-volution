@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import networkx as nx
 
+<<<<<<< HEAD
 try:
     from . import config
     from .quantum_backend import setup_qpu, run_quantum, _PYQUIL_AVAILABLE
@@ -21,11 +22,53 @@ except ImportError:
     import config
     from quantum_backend import setup_qpu, run_quantum, _PYQUIL_AVAILABLE
     from classical_backend import run_classical
+=======
+from .scorer import maxcut_score
+>>>>>>> 89a23a9231413d4759cfbb2d4cf2dbe668e0d9c5
 
 Solution = dict  # {node_id: +1 | -1}
 
 
+<<<<<<< HEAD
 def maxcut_score(G: nx.Graph, assignment: Solution) -> float:
+=======
+# -- Result stores populated by _pyquil_backend after each subgraph solve -----
+# Keyed by id(subgraph) so every DC-QAOA leaf gets its own record.
+#
+# OPTIMIZATION_HISTORY[id(subgraph)] -> list[list[float]]
+#   Outer list : one entry per COBYLA trial  (len = NUM_STARTS)
+#   Inner list : E[cut] at every objective function evaluation within that trial
+#   → used by the loss-curve notebook cell to plot convergence
+#
+# FINAL_PARAMETERS[id(subgraph)] -> dict
+#   "gammas"     list[float]  optimal cost angles  γ_1 … γ_p
+#   "betas"      list[float]  optimal mixer angles β_1 … β_p
+#   "best_e_cut" float        E[cut] at optimal params
+#   "best_trial" int          which multi-start trial won  (0-indexed)
+#   "mixer_mode" str
+#   "n_layers"   int          LAYER_COUNT (p)
+#   "n_qubits"   int
+OPTIMIZATION_HISTORY: dict = {}
+FINAL_PARAMETERS:     dict = {}
+
+# -- Try importing pyQuil ------------------------------------------------------
+try:
+    from pyquil import Program, get_qc
+    from pyquil.gates import H, RZ, RX, RY, CNOT, MEASURE
+    _PYQUIL_AVAILABLE = True
+except ImportError:
+    _PYQUIL_AVAILABLE = False
+
+# Global quantum computer reference (set by setup_qpu)
+_QC = None
+
+
+# ---------------------------------------------------------------------------
+# QPU / QVM configuration (call once before running the pipeline)
+# ---------------------------------------------------------------------------
+
+def setup_quantum_computer(qc_name: str = "8q-qvm") -> None:
+>>>>>>> 89a23a9231413d4759cfbb2d4cf2dbe668e0d9c5
     """
     Evaluate the weighted Max-Cut objective C(z) for a spin assignment.
 

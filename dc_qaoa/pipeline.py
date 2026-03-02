@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+<<<<<<< HEAD
 try:
     from graph_loader import load_graph
     from partitioner import recursive_partition
@@ -29,6 +30,16 @@ except ImportError:
     from . import config as _config
     from .merger import merge
     from .solver import maxcut_score
+=======
+import networkx as nx
+
+from .graph_loader import load_graph
+from .partitioner import recursive_partition, PartitionNode
+from .solver import qaoa_solve, setup_quantum_computer, _local_search
+import dc_qaoa.solver as _solver
+from .merger import merge
+from .scorer import maxcut_score
+>>>>>>> 89a23a9231413d4759cfbb2d4cf2dbe668e0d9c5
 
 
 def run_pipeline(
@@ -55,9 +66,15 @@ def run_pipeline(
     # ------------------------------------------------------------------ 0 --
     if qc_name:
         print(f"\n=== Step 0: Configure quantum computer ({qc_name}) ===")
+<<<<<<< HEAD
         setup_qpu(qc_name)
     elif _config.USE_QUANTUM:
         print("\n[pipeline] USE_QUANTUM=True -- QC will be auto-configured per subgraph.")
+=======
+        setup_quantum_computer(qc_name)
+    elif _solver.USE_PYQUIL:
+        print("\n[pipeline] USE_PYQUIL=True -- QC will be auto-configured per subgraph.")
+>>>>>>> 89a23a9231413d4759cfbb2d4cf2dbe668e0d9c5
 
     # ------------------------------------------------------------------ 1 --
     print("\n=== Step 1: Load graph ===")

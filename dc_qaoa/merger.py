@@ -6,12 +6,8 @@ from __future__ import annotations
 import itertools
 import networkx as nx
 
-try:
-    from partitioner import PartitionNode
-    from solver import maxcut_score
-except ImportError:
-    from .partitioner import PartitionNode
-    from .solver import maxcut_score
+from .partitioner import PartitionNode
+from .scorer import maxcut_score
 
 Solution = dict  # {node_id: +1 | -1}
 
