@@ -8,7 +8,7 @@ so that patches applied after import still take effect.
 
 # ── Backend selection ──────────────────────────────────────────────────────────
 USE_QUANTUM  = False   # set True when pyquil is installed & QVM/QPU ready
-
+OPTIMIZER = "SA"
 # ── QAOA circuit ───────────────────────────────────────────────────────────────
 MIXER_MODE   = "X"     # "X" (standard), "XX" (graph-coupled), "XY" (XY-mixer)
 LAYER_COUNT  = 1       # QAOA depth p  (p=1 for noisy hardware; increase for sim)

@@ -16,16 +16,10 @@ Result store (populated after each solve, keyed by id(subgraph)):
 """
 from __future__ import annotations
 
+import time
 import numpy as np
 import networkx as nx
 from scipy.optimize import minimize, dual_annealing, differential_evolution
-
-try:
-    from . import config
-except ImportError:
-    import config
-    
-from .circuit import _build_qaoa_circuit
 
 # ── pyQuil availability ────────────────────────────────────────────────────────
 try:
@@ -33,13 +27,21 @@ try:
     _PYQUIL_AVAILABLE = True
 except ImportError:
     _PYQUIL_AVAILABLE = False
+    
+from . import config as _config
+from .cost_function import *
+from .circuit import _build_qaoa_circuit
 
 # Global quantum computer handle (set by setup_qpu)
 _QC = None
 
+# Data types
+from typing import Literal
+type Solution = dict[int, Literal[1, -1]]  # {node_id: +1 | -1}
+type Solutions = list[Solution]
+
 # ── Result store ───────────────────────────────────────────────────────────────
 FINAL_PARAMETERS: dict = {}  # id(subgraph) -> dict
-
 
 def setup_qpu(qc_name: str = "8q-qvm") -> None:
     """
@@ -62,9 +64,9 @@ def setup_qpu(qc_name: str = "8q-qvm") -> None:
     print(f"[solver] Quantum computer set -> {qc_name}")
     
 
-def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False) -> list:
+def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False, pcond_layer=1) -> list[dict]:
     """
-    Run weighted QAOA via pyQuil and return sampled solutions.
+    Run weighted QAOA via pyQuil and return sampled solutions. Retun list of dictionary
 
     Reads runtime settings from the config module, so CLI patches apply.
     Auto-configures a QVM if setup_qpu() was not called.
@@ -73,10 +75,15 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
 
     n          = len(nodes)
     node_index = {v: i for i, v in enumerate(nodes)}
-    edges: list[tuple[int, int, float]] = [
-        (node_index[u], node_index[v], float(data.get("weight", 1.0)))
-        for u, v, data in subgraph.edges(data=True)
-    ]
+    
+    if precondition:
+        # pcond_edges = 
+        pass
+    else:
+        edges = [
+            (node_index[u], node_index[v], float(data.get("weight", 1.0)))
+            for u, v, data in subgraph.edges(data=True)
+        ]
 
     if _QC is None:
         qc_name = f"{n}q-qvm"
@@ -87,61 +94,71 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
     prog = _build_qaoa_circuit(n, edges, config.LAYER_COUNT, mixer_mode=config.MIXER_MODE)
     executable = _QC.compile(prog.wrap_in_numshots_loop(config.SHOTS))
 
-    def objective(params):
+    # calculate objective for optimization
+    def cost_func_estimator(params):
         gammas_val = params[:config.LAYER_COUNT].tolist()
         betas_val  = params[config.LAYER_COUNT:].tolist()
         result     = _QC.run(executable, memory_map={"gammas": gammas_val, "betas": betas_val})
         bitstrings = np.array(result.get_register_map().get("ro"))
-        total_cut  = sum(
-            w
-            for shot in range(len(bitstrings))
-            for (u, v, w) in edges
-            if bitstrings[shot, u] != bitstrings[shot, v]
-        )
-        return -(total_cut / len(bitstrings))
+        scores = [qaoa_cut_score(edges, bitstring) for bitstring in bitstrings]
+        return -np.average(scores)
 
+    # arguments for scipy.optimize functions
     bounds = [(-np.pi, np.pi)] * (2 * config.LAYER_COUNT)
-    
     rng = np.random.default_rng(config.SEED)
-    trial = rng.uniform(-np.pi, np.pi, 2 * config.LAYER_COUNT)
+    z0 = rng.uniform(-np.pi, np.pi, 2 * config.LAYER_COUNT)
     
+    t_start = time.perf_counter()
+    print(f"using {method}...")
     match method:
         case "SA":
             result = dual_annealing(
-                objective,
+                cost_func_estimator,
                 bounds=bounds,
                 maxiter=config.MAXITER,
             )
         case "DE":
             result = differential_evolution(
-                objective,
+                cost_func_estimator,
                 bounds=bounds,
                 maxiter=config.MAXITER
             )
         case "SLSQP":
             result = minimize(
-                objective,
-                trial,
+                cost_func_estimator,
+                z0,
                 method="SLSQP",
-                options={"maxiter": 200, "rhobeg": 0.5},
+                options={"maxiter": config.MAXITER},
+                tol=1e-1,
             )
         case "COBYLA":
             result = minimize(
-                objective,
-                trial,
+                cost_func_estimator,
+                z0,
                 method="COBYLA",
-                options={"maxiter": 200, "rhobeg": 0.5},
+                options={"maxiter": _config.MAXITER},
+                tol=1e-1,
+            )
+        case "COBYQA": 
+            result = minimize(
+                cost_func_estimator,
+                z0,
+                method="COBYQA",
+                options={"maxiter": _config.MAXITER},
+                tol=1e-1,
             )
         case _:
             raise ValueError(f"optimizer \"f{method}\" is not supported")
-
+    t_end = time.perf_counter()
+    print(f"[optimizer] time elapsed with optimizer {method}: {t_end-t_start:.2f}")
+    
     cut_opt    = -result.fun
     params_opt = result.x
 
     print(f"[solver] QAOA best E[cut]: {cut_opt:.4f}")
 
     gammas_opt = params_opt[:config.LAYER_COUNT].tolist()
-    betas_opt  = cut_opt[config.LAYER_COUNT:].tolist()
+    betas_opt  = params_opt[config.LAYER_COUNT:].tolist()            # slice parameters, not cut value
 
     FINAL_PARAMETERS[id(subgraph)] = {
         "gammas":      gammas_opt,
@@ -161,6 +178,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
     result_final = _QC.run(executable, memory_map={"gammas": gammas_opt, "betas": betas_opt})
     bitstrings = np.array(result_final.get_register_map().get("ro"))
 
+    # encode bit 0 to 1 and 1 to -1
     return [
         {nodes[i]: (1 if bitstrings[shot, i] == 0 else -1) for i in range(n)}
         for shot in range(len(bitstrings))

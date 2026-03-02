@@ -12,22 +12,23 @@ Steps:
 """
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Optional
 
 try:
     from graph_loader import load_graph
     from partitioner import recursive_partition
+    from merger import merge
     from solver import solve_subgraph, setup_qpu
     import config as _config
-    from merger import merge
     from solver import maxcut_score
 except ImportError:
     from .graph_loader import load_graph
     from .partitioner import recursive_partition
+    from .merger import merge
     from .solver import solve_subgraph, setup_qpu
     from . import config as _config
-    from .merger import merge
     from .solver import maxcut_score
 
 
@@ -65,7 +66,7 @@ def run_pipeline(
 
     # ------------------------------------------------------------------ 2 --
     print(f"\n=== Step 2: Partition graph ===")
-    partition_tree = recursive_partition(G, max_size=max_size)
+    partition_tree = recursive_partition(G, max_size=max_size, verbose=True)
     leaves = partition_tree.leaves()
     sizes = [leaf.graph.number_of_nodes() for leaf in leaves]
     print(
@@ -77,6 +78,7 @@ def run_pipeline(
     print("\n=== Step 3: Solve leaf subgraphs ===")
     subgraph_solutions: dict = {}
     for i, leaf in enumerate(leaves):
+        t_start = time.perf_counter()
         n_nodes = leaf.graph.number_of_nodes()
         backend = "quantum" if _config.USE_QUANTUM else "classical"
         print(
@@ -88,10 +90,13 @@ def run_pipeline(
         subgraph_solutions[id(leaf)] = solutions
         best = maxcut_score(leaf.graph, solutions[0]) if solutions else 0.0
         print(f"[pipeline]   -> {len(solutions)} solution(s), best subgraph cut = {best:.4f}")
+        t_end = time.perf_counter()
+        elapsed = t_end - t_start
+        print(f"elapsed time: {elapsed:.2f} seconds")
 
     # ------------------------------------------------------------------ 4 --
     print("\n=== Step 4: Merge (GR policy) ===")
-    best_assignment = merge(G, partition_tree, subgraph_solutions, top_t=top_t)
+    best_assignment = merge(G, partition_tree, subgraph_solutions, top_t=top_t, verbose=True)
 
     # ------------------------------------------------------------------ 5 --
     print("\n=== Step 5: Final score ===")
