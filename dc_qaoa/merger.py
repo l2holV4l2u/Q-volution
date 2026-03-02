@@ -21,11 +21,13 @@ def merge(
     partition_tree: PartitionNode,
     subgraph_solutions: dict,
     top_t: int = 10,
+    verbose=False,
 ) -> Solution:
     """Merge all leaf solutions through the partition tree. Returns the best global assignment."""
-    results = _merge_node(full_graph, partition_tree, subgraph_solutions, top_t)
+    results = _merge_node(full_graph, partition_tree, subgraph_solutions, top_t, verbose)
     best = results[0]
-    print(f"[merger] Final score on full graph: {maxcut_score(full_graph, best):.4f}")
+    if verbose:
+        print(f"[merger] Final score on full graph: {maxcut_score(full_graph, best):.4f}")
     return best
 
 
@@ -34,6 +36,7 @@ def _merge_node(
     node: PartitionNode,
     subgraph_solutions: dict,
     top_t: int,
+    verbose=False,
 ) -> list[Solution]:
     """Recursively merge via GR policy. Returns up to top_t solutions, best first."""
     if node.is_leaf:
@@ -68,9 +71,9 @@ def _merge_node(
             results.append(sol)
             if len(results) >= top_t:
                 break
-
-    print(
-        f"[merger] Internal node: score={ranked[0][0] if ranked else 0:.4f}, "
-        f"|S|={len(sep_nodes)}, pairs={len(left_sols)*len(right_sols)}, kept={len(results)}"
-    )
+    if verbose:
+        print(
+            f"[merger] Internal node: score={ranked[0][0] if ranked else 0:.4f}, "
+            f"|S|={len(sep_nodes)}, pairs={len(left_sols)*len(right_sols)}, kept={len(results)}"
+        )
     return results or [{}]

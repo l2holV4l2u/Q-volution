@@ -92,6 +92,7 @@ def build_subgraphs(
 def recursive_partition(
     G: nx.Graph,
     max_size: int = 84,
+    verbose=False
 ) -> PartitionNode:
     """
     Recursively partition G until all leaves have ≤ max_size nodes.
@@ -103,38 +104,40 @@ def recursive_partition(
     Returns the root PartitionNode of the partition tree.
     """
     root = PartitionNode(graph=G, separator=set())
-    _partition_recursive(root, max_size)
+    _partition_recursive(root, max_size, verbose)
     return root
 
 
 def _partition_recursive(
-    node: PartitionNode, max_size: int
+    node: PartitionNode, max_size: int, verbose=False
 ) -> None:
     G = node.graph
 
     if G.number_of_nodes() <= max_size:
         node.is_leaf = True
         return
-
-    print(
-        f"[partitioner] Splitting: {G.number_of_nodes()} nodes, "
-        f"{G.number_of_edges()} edges"
-    )
+    if verbose:
+        print(
+            f"[partitioner] Splitting: {G.number_of_nodes()} nodes, "
+            f"{G.number_of_edges()} edges"
+        )
 
     A, S, B = naive_lgp(G)
 
     if not A or not B:
-        print(
-            f"[partitioner] WARNING: could not split {G.number_of_nodes()}-node "
-            f"graph; treating as oversized leaf."
-        )
         node.is_leaf = True
+        if verbose:
+            print(
+                f"[partitioner] WARNING: could not split {G.number_of_nodes()}-node "
+                f"graph; treating as oversized leaf."
+            )
         return
 
-    print(
+    if verbose: 
+        print(
         f"[partitioner]  -> |A|={len(A)}, |S|={len(S)}, |B|={len(B)}  "
         f"(2^|S|={2**len(S)} separator combos at merge)"
-    )
+        )
 
     left_G, right_G = build_subgraphs(G, A, S, B)
 

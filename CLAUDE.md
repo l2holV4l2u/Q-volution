@@ -159,6 +159,6 @@ Edit `dc_qaoa/config.py` directly to change defaults.
 | `SHOTS` | 1024 | Measurement shots per QAOA circuit |
 | `SEED` | 42 | Random seed for reproducibility |
 | `MIXER_MODE` | `"X"` | Mixer type: `"X"` (standard), `"XX"` (graph-coupled), `"XY"` |
-| `SA_MAXITER` | 1000 | Simulated annealing iterations (quantum backend only) |
+| `MAXITER` | 1000 | maximum optimization iterations (QAOA only) |
 
 Pipeline parameters (`max_size`, `top_t`) are hardcoded in `run_pipeline()` defaults (`max_size=8`, `top_t=10`).
