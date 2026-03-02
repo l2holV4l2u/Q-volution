@@ -243,5 +243,5 @@ MIXER_MODE   = "X"     # "X" (standard) | "XX" (graph-coupled) | "XY"
 LAYER_COUNT  = 1       # QAOA depth p
 SHOTS        = 1024    # Measurement shots per circuit run
 SEED         = 42
-SA_MAXITER   = 1000    # Simulated annealing iterations (quantum backend only)
+MAXITER   = 1000    # Simulated annealing iterations (quantum backend only)
 ```

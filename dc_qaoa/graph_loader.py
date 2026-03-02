@@ -5,6 +5,7 @@ import pandas as pd
 import networkx as nx
 from pathlib import Path
 
+type edges = list[tuple[int, int, float]]
 
 def load_graph(path: str | Path) -> nx.Graph:
     """
