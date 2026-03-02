@@ -43,7 +43,6 @@ PARAMS_PATHS: dict = {}       # id(subgraph) -> parameter space's trajectory (li
 LOSS_HISTORY: dict = {}      # id(subgraph) -> list[float]
 
 
-
 def setup_qpu(qc_name: str = "8q-qvm") -> None:
     """
     Configure the pyQuil quantum computer target.
