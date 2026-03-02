@@ -19,7 +19,8 @@ problem on electrical grids, which is a **weighted Max-Cut** problem.
 │   ├── quantum_backend.py    # pyQuil QAOA circuit + simulated annealing optimisation
 │   ├── classical_backend.py  # Exact brute-force over all 2^n assignments
 │   ├── merger.py             # GR policy merge through the partition tree
-│   └── pipeline.py           # Orchestrates all 5 steps end-to-end
+│   ├── pipeline.py           # Orchestrates all 5 steps end-to-end
+│   └── graph_decomposition_reducer.py  # graph decomposition reduction
 │
 ├── tools/
 │   ├── benchmark.py          # DC-QAOA vs classical baselines comparison
@@ -106,11 +107,22 @@ problem on electrical grids, which is a **weighted Max-Cut** problem.
 ```bash
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install .
+pip install -r requirements.txt 2>/dev/null || pip install pandas pyarrow networkx numpy scipy
 
 # Optional extras for tools/
 pip install matplotlib cvxpy pyquil
 ```
+
+> **Windows note:** `pip install -e .` requires an Administrator shell (to write
+> `dc_qaoa.exe` into `Scripts/`).  The simpler alternative — no install needed —
+> is the `.env` file already in the repo root.  VSCode picks it up automatically.
+> For a plain terminal, set it once per session:
+> ```powershell
+> $env:PYTHONPATH = $PWD   # PowerShell
+> ```
+> ```bash
+> export PYTHONPATH=.      # bash / Git Bash
+> ```
 
 For QPU/QVM access (optional):
 ```bash
@@ -154,18 +166,24 @@ All tools are run from the **project root** (`Q-volution 2025/`), not from insid
 
 ---
 
-### `benchmark.py` — Compare DC-QAOA against classical baselines
+### `benchmark.py` — Compare DC-QAOA and Graph-Decomposition+QAOA against classical baselines
 
-Runs 5 methods side-by-side and prints scores, approximation ratios, timing, and a verdict.
+Runs 6 methods side-by-side and prints scores, approximation ratios, qubit counts, reduction %, timing, and a verdict.
 
 ```bash
 python tools/benchmark.py datasets/dataset_A.parquet
 python tools/benchmark.py datasets/dataset_B.parquet
 ```
 
-Methods compared: random (1000 trials), greedy+LS, NetworkX Kernighan-Lin+LS, random+LS (500 trials), DC-QAOA pipeline (classical backend).
+Methods compared:
+1. Random (best of 1000 trials)
+2. Greedy construction
+3. NetworkX Kernighan-Lin bisection
+4. Random (500 trials)
+5. DC-QAOA pipeline (classical backend)
+6. Graph-Decomposition+QAOA — graph decomposition reduction + QAOA
 
-Tune `MAX_SIZE` and `TOP_T` at the top of the file to adjust the pipeline.
+Tune `MAX_SIZE`, `TOP_T`, and `CUTSET_M` at the top of the file to adjust the pipelines.
 
 ---
 
