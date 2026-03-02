@@ -153,9 +153,8 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
 
 
     bounds = [(-np.pi, np.pi)] * (2 * config.LAYER_COUNT)
-    
     rng = np.random.default_rng(config.SEED)
-    trial = rng.uniform(-np.pi, np.pi, 2 * config.LAYER_COUNT)
+    z0 = rng.uniform(-np.pi, np.pi, 2 * config.LAYER_COUNT)
     
     t_start = time.perf_counter()
     print(f"using {method}...")

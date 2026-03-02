@@ -29,6 +29,17 @@ __all__ = [
     "solver",
     "merger",
     "pipeline",
+    "graph_decomposition_reducer",
 ]
 
-from . import config, graph_loader, partitioner, classical_backend, quantum_backend, solver, merger, pipeline
+from . import (
+    config,
+    graph_loader,
+    partitioner,
+    classical_backend,
+    quantum_backend,
+    solver,
+    merger,
+    pipeline,
+    graph_decomposition_reducer,
+)
