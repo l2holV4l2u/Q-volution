@@ -27,7 +27,6 @@ except ImportError:
     from dc_qaoa import solver as _solver_module
     from dc_qaoa.pipeline import run_pipeline
 
-
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="DC-QAOA Weighted Max-Cut Pipeline")
     p.add_argument("input", help="Path to graph .parquet file.")
