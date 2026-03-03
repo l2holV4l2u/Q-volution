@@ -30,6 +30,7 @@ except ImportError:
     _PYQUIL_AVAILABLE = False
     
 from . import config as _config
+from .precondition import *
 from .graph import graph_compressed
 from .circuit import build_qaoa_circuit
 from .cost_function import *
@@ -96,35 +97,12 @@ def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> lis
     z0 = None
     p  = _config.LAYER_COUNT
 
-    if precondition == "analytic-p1":
-        # Closed-form near-optimal angles for p=1 QAOA Max-Cut.
-        # gamma* = arctan(1 / sqrt(avg_degree - 1)) / 2  (perturbation theory)
-        # beta*  = pi/8  (known near-optimal for most graph families)
-        # For p > 1: linearly ramp gamma up and beta down across layers.
-        degrees   = [d for _, d in subgraph.degree()]
-        avg_deg   = max(np.mean(degrees), 2.0)
-        gamma_opt = np.arctan(1.0 / np.sqrt(avg_deg - 1.0)) / 2.0
-        beta_opt  = np.pi / 8.0
-        gammas = [gamma_opt * (k + 1) / p for k in range(p)]
-        betas  = [beta_opt  * (p - k)     / p for k in range(p)]
-        z0 = np.array(gammas + betas)
-        print(f"[precondition] analytic-p1: gamma_0={gamma_opt:.4f}, beta_0={beta_opt:.4f}")
-
-    elif precondition == "light-cone":
-        # Scale angles by local weighted connectivity.
-        # Denser graphs need smaller gamma (avoid phase overshooting).
-        # Betas decay across layers like a quantum annealing schedule.
-        w_degrees = [d for _, d in subgraph.degree(weight="weight")]
-        avg_w_deg = max(np.mean(w_degrees), 1.0)
-        gamma_base = np.pi / (4.0 * np.log2(avg_w_deg + 1.0))
-        beta_base  = np.pi / 4.0
-        gammas = [gamma_base * (k + 1) / p for k in range(p)]
-        betas  = [beta_base  * (p - k)     / p for k in range(p)]
-        z0 = np.array(gammas + betas)
-        print(f"[precondition] light-cone: gamma_base={gamma_base:.4f}, beta_base={beta_base:.4f}")
-
-    elif precondition == "bruh":
-        pass
+    if precondition is not None:
+        match precondition:
+            case "measurement":     subgraph = zij_measurement(subgraph)
+            case "analytic-p1":     subgraph = zij_p1_analytical(subgraph)
+            case "back-propagate":  subgraph = zij_p1_backpropagate(subgraph)
+            # case "light-cone":  subgraph = zizj_light_cone(subgraph)
 
     subgraph_id = id(subgraph)
     LOSS_HISTORY[subgraph_id] = []

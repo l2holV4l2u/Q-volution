@@ -22,3 +22,12 @@ except ImportError:
     from dc_qaoa.pipeline import run_pipeline
 
 print("This is a testing file for quick experiments and debugging. Not meant for production use.")
+
+G = nx.Graph()
+
+G.add_edge(1,8,weight=5)
+G.add_nodes_from(range(5))
+print(G.nodes)
+print(G.edges)
+
+print(G.number_of_nodes())

@@ -26,7 +26,6 @@ def load_graph(path: str | Path) -> nx.Graph:
     else:
         raise ValueError(f"can't read file in {suffix} format")
         
-    
     # Normalise column names to lowercase
     df.columns = [c.lower() for c in df.columns]
 
@@ -57,13 +56,15 @@ def load_graph(path: str | Path) -> nx.Graph:
         v = int(row[tgt_col])
         w = float(row[wgt_col]) if wgt_col else 1.0
         G.add_edge(u, v, weight=w)
+        
+    # n_nodes = df[['node_1', 'node_2']].max() + 1
+    # G.add_nodes_from(range(n_nodes))
 
     return G
 
-def graph_compressed(graph : nx.Graph) -> edges:
+def graph_compressed(graph : nx.Graph):
     node_index = {v: i for i, v in enumerate(graph.nodes())}
-    return [
-            (node_index[u], node_index[v], float(data.get("weight", 1.0)))
+    return [(node_index[u], node_index[v], float(data.get("weight", 1.0)))
             for u, v, data in graph.edges(data=True)], len(node_index)
      
 
