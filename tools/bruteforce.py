@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import networkx as nx
 
-from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.graph import load_graph
 from dc_qaoa.solver import maxcut_score
 
 

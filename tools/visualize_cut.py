@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import networkx as nx
 
-from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.graph import load_graph
 from dc_qaoa.pipeline import run_pipeline
 
 # -- Pipeline config -----------------------------------------------------------

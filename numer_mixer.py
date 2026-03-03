@@ -12,7 +12,7 @@ try:
     from dc_qaoa import solver as _solver_module
     from dc_qaoa.pipeline import run_pipeline
     from dc_qaoa.quantum_backend import setup_qpu
-    from dc_qaoa.graph_loader import load_graph
+    from dc_qaoa.graph import load_graph
     from dc_qaoa.visualization import draw_graph
 
 except ImportError:

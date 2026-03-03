@@ -16,7 +16,7 @@ from pathlib import Path
 
 from dc_qaoa import solver
 from dc_qaoa.pipeline import run_pipeline
-from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.graph import load_graph
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MAX_SIZE      = 8     # qubits per QVM subgraph circuit (increase for deeper sim)

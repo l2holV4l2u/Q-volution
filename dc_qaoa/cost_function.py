@@ -1,6 +1,6 @@
 from . import config
 from pyquil import Program
-from .graph_loader import edges
+from .graph import edges
 
 import numpy as np
 

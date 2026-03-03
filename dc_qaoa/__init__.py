@@ -22,7 +22,7 @@ __version__ = "0.1.0"
 # public API -- core solver modules only
 __all__ = [
     "config",
-    "graph_loader",
+    "graph",
     "partitioner",
     "classical_backend",
     "quantum_backend",
@@ -34,7 +34,7 @@ __all__ = [
 
 from . import (
     config,
-    graph_loader,
+    graph,
     partitioner,
     classical_backend,
     quantum_backend,

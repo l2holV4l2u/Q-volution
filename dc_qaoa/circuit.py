@@ -5,7 +5,7 @@ from pyquil import Program, get_qc
 from pyquil.gates import Gate, H, RZ, RX, CNOT, MEASURE
 from pyquil.quil import MemoryReference
 
-from .graph_loader import edges
+from .graph import edges
 
 # QUANTUM GATES
 def MEASURE_ZZ(counts, i, j):

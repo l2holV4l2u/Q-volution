@@ -31,7 +31,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from dc_qaoa import config as qconfig
-from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.graph import load_graph
 from dc_qaoa.solver import maxcut_score
 from dc_qaoa.graph_decomposition_reducer import graph_decomposition_reduce, full_objective
 

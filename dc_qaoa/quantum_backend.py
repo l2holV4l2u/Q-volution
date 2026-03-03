@@ -30,7 +30,7 @@ except ImportError:
     _PYQUIL_AVAILABLE = False
     
 from . import config as _config
-from .graph_loader import graph_compressed
+from .graph import graph_compressed
 from .circuit import build_qaoa_circuit
 from .cost_function import *
 

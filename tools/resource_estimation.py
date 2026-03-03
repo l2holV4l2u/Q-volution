@@ -16,7 +16,7 @@ from pathlib import Path
 
 import networkx as nx
 
-from dc_qaoa.graph_loader import load_graph
+from dc_qaoa.graph import load_graph
 from dc_qaoa.partitioner import recursive_partition
 
 

@@ -17,14 +17,14 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from graph_loader import load_graph
+    from dc_qaoa.graph import load_graph
     from partitioner import recursive_partition
     from merger import merge
     from solver import solve_subgraph, setup_qpu
     import config as _config
     from solver import maxcut_score
 except ImportError:
-    from .graph_loader import load_graph
+    from .graph import load_graph
     from .partitioner import recursive_partition
     from .merger import merge
     from .solver import solve_subgraph, setup_qpu
