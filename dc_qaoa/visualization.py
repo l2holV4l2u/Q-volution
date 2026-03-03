@@ -1,4 +1,4 @@
-
+﻿
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.ticker import MaxNLocator
 from pathlib import Path
 from scipy.linalg import expm
 from typing import Optional, Union
@@ -18,9 +19,9 @@ plt.rcParams["figure.dpi"] = 100
 SavePath = Optional[Union[str, Path]]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 # Internal helper: show interactively or save to file
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 
 def _show_or_save(fig: plt.Figure, save_path: SavePath) -> None:
     """
@@ -33,15 +34,15 @@ def _show_or_save(fig: plt.Figure, save_path: SavePath) -> None:
     """
     if save_path is not None:
         fig.savefig(save_path, dpi=fig.dpi, bbox_inches="tight")
-        print(f"[vis] Saved → {save_path}")
+        print(f"[vis] Saved โ’ {save_path}")
     else:
         plt.show()
     plt.close(fig)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 # Graph drawing
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 
 def draw_graph(
     G: nx.Graph,
@@ -87,13 +88,27 @@ def draw_graph(
     return pos
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 # Training-loss curve
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 
-def QAOA_training_loss_history(subgraph_id: int) -> Optional[list[float]]:
-    """Return the training loss history stored for *subgraph_id*."""
-    return LOSS_HISTORY.get(subgraph_id)
+def QAOA_training_loss_history(
+    subgraph_id: int,
+    best_so_far: bool = True,
+) -> Optional[list[float]]:
+    """
+    Return the training loss history for *subgraph_id*.
+
+    By default this returns cumulative best-so-far loss so the series is
+    monotonic and easier to interpret as convergence.
+    """
+    history = LOSS_HISTORY.get(subgraph_id)
+    if history is None:
+        return None
+    if not best_so_far:
+        return list(history)
+    arr = np.asarray(history, dtype=float)
+    return np.minimum.accumulate(arr).tolist()
 
 
 def QAOA_parameter_trajectory(subgraph_id: int) -> Optional[list]:
@@ -104,6 +119,9 @@ def QAOA_parameter_trajectory(subgraph_id: int) -> Optional[list]:
 def plot_loss_history(
     loss_history: list[float],
     title: str = "QAOA Training Loss History",
+    best_so_far: bool = True,
+    relative_to_final: bool = False,
+    x_axis_label: str = "Iteration",
     save_path: SavePath = None,
 ) -> None:
     """
@@ -114,19 +132,66 @@ def plot_loss_history(
     save_path : If given, save the figure to this path instead of opening
                 an interactive window.
     """
+    y = np.asarray(loss_history, dtype=float)
+    if best_so_far:
+        y = np.minimum.accumulate(y)
+    if relative_to_final and len(y) > 0:
+        final_val = y[-1]
+        if final_val != 0:
+            y = y / final_val
+    x = np.arange(1, len(y) + 1, dtype=int)
+
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(loss_history, marker="o", linestyle="-", color="royalblue")
+    ax.plot(x, y, marker="o", linestyle="-", color="royalblue")
     ax.set_title(title, fontsize=14)
-    ax.set_xlabel("Iteration", fontsize=12)
-    ax.set_ylabel("Loss (Negative Expected Cut)", fontsize=12)
+    ax.set_xlabel(x_axis_label, fontsize=12)
+    ylabel = "Relative Loss (Loss / Final Loss)" if relative_to_final else "Loss (Negative Expected Cut)"
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.grid(True)
     fig.tight_layout()
     _show_or_save(fig, save_path)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 # Numpy statevector QAOA simulator  (p = 1, exact)
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+
+def plot_multi_loss_history(
+    histories: dict[str, list[float]],
+    title: str = "QAOA Training Loss History (All Subgraphs)",
+    best_so_far: bool = True,
+    x_axis_label: str = "Iteration",
+    save_path: SavePath = None,
+) -> None:
+    """
+    Plot multiple QAOA loss curves in one figure (one line per subgraph).
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    plotted = 0
+    for label, loss_history in histories.items():
+        if not loss_history:
+            continue
+        y = np.asarray(loss_history, dtype=float)
+        if best_so_far:
+            y = np.minimum.accumulate(y)
+        x = np.arange(1, len(y) + 1, dtype=int)
+        ax.plot(x, y, marker="o", linestyle="-", linewidth=1.4, markersize=3.5, label=label)
+        plotted += 1
+
+    if plotted == 0:
+        plt.close(fig)
+        return
+
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel(x_axis_label, fontsize=12)
+    ax.set_ylabel("Loss (Negative Expected Cut)", fontsize=12)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.grid(True, alpha=0.35)
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    _show_or_save(fig, save_path)
 
 _I2 = np.eye(2, dtype=complex)
 _X2 = np.array([[0, 1], [1, 0]], dtype=complex)
@@ -145,7 +210,7 @@ def _kron_single(op: np.ndarray, qubit: int, n: int) -> np.ndarray:
 
 
 def _zz_op(u: int, v: int, n: int) -> np.ndarray:
-    """Z_u ⊗ Z_v embedded in n-qubit space."""
+    """Z_u โ— Z_v embedded in n-qubit space."""
     ops = [_I2] * n
     ops[u] = _Z2
     ops[v] = _Z2
@@ -159,7 +224,7 @@ def _build_cost_operator(
     edges: list[tuple[int, int, float]], n: int
 ) -> np.ndarray:
     """
-    C = Σ_{(u,v,w) ∈ E}  w · (I − Z_u Z_v) / 2
+    C = ฮฃ_{(u,v,w) โ E}  w ยท (I โ’ Z_u Z_v) / 2
 
     Standard weighted Max-Cut cost operator whose expectation equals
     the expected cut weight.
@@ -181,19 +246,19 @@ def _statevector_qaoa_expectation(
     """
     Exact p = 1 QAOA expected cut value via statevector simulation.
 
-    |ψ⟩ = U_M(β) · U_C(γ) · |+⟩^n
-    ⟨C⟩ = ⟨ψ|C|ψ⟩
+    |ฯโฉ = U_M(ฮฒ) ยท U_C(ฮณ) ยท |+โฉ^n
+    โจCโฉ = โจฯ|C|ฯโฉ
 
     Mixer modes
     -----------
-    "X"  : U_M = ⊗_q exp(−iβ X_q)                    (standard transverse field)
-    "XX" : U_M = Π_{(u,v)} exp(−iβ X_u X_v)           (graph-coupled XX)
-    "XY" : U_M = Π_{(u,v)} exp(−iβ (X_u X_v + Y_u Y_v)/2)  (XY mixer)
+    "X"  : U_M = โ—_q exp(โ’iฮฒ X_q)                    (standard transverse field)
+    "XX" : U_M = ฮ _{(u,v)} exp(โ’iฮฒ X_u X_v)           (graph-coupled XX)
+    "XY" : U_M = ฮ _{(u,v)} exp(โ’iฮฒ (X_u X_v + Y_u Y_v)/2)  (XY mixer)
     """
     dim = 2 ** n
     C = _build_cost_operator(edges, n)
 
-    # |+⟩^n
+    # |+โฉ^n
     plus = np.array([1.0, 1.0], dtype=complex) / np.sqrt(2)
     state = plus.copy()
     for _ in range(n - 1):
@@ -235,10 +300,10 @@ def _compute_landscape(
     beta_range: tuple[float, float]  = (-np.pi / 2, np.pi / 2),
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Compute the 2-D QAOA landscape ⟨C⟩(γ, β) for p = 1.
+    Compute the 2-D QAOA landscape โจCโฉ(ฮณ, ฮฒ) for p = 1.
 
     Returns (gamma_vals, beta_vals, landscape) where
-    landscape[i, j] = ⟨C⟩ at (gamma_vals[i], beta_vals[j]).
+    landscape[i, j] = โจCโฉ at (gamma_vals[i], beta_vals[j]).
     """
     gamma_vals = np.linspace(*gamma_range, grid)
     beta_vals  = np.linspace(*beta_range,  grid)
@@ -252,9 +317,9 @@ def _compute_landscape(
     return gamma_vals, beta_vals, -landscape
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 # Trajectory extraction helper
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 
 def _extract_gamma_beta(entry, layer_count: int = 1):
     """
@@ -278,9 +343,9 @@ def _extract_gamma_beta(entry, layer_count: int = 1):
     return gamma, beta
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 # Primary landscape + trajectory plot
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 
 def plot_QAOA_landscape(
     subgraph: nx.Graph,
@@ -306,16 +371,16 @@ def plot_QAOA_landscape(
         for u, v, d in subgraph.edges(data=True)
     ]
 
-    print(f"[vis] Computing landscape ({grid}×{grid}) with mixer='{mixer_mode}' …")
+    print(f"[vis] Computing landscape ({grid}ร—{grid}) with mixer='{mixer_mode}' โ€ฆ")
     gamma_vals, beta_vals, landscape = _compute_landscape(
         edges, n, grid, mixer_mode, gamma_range, beta_range
     )
 
     fig, ax = plt.subplots(figsize=(9, 7))
     cf = ax.contourf(beta_vals, gamma_vals, landscape, levels=50, cmap="viridis")
-    plt.colorbar(cf, ax=ax, label="⟨C⟩ (Expected Cut Value)")
+    plt.colorbar(cf, ax=ax, label="โจCโฉ (Expected Cut Value)")
 
-    # ── Trajectory overlay ───────────────────────────────────────────────────
+    # โ”€โ”€ Trajectory overlay โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
     traj_entries = PARAMS_PATHS.get(subgraph_id, [])
     gammas_traj, betas_traj = [], []
     for entry in traj_entries:
@@ -330,12 +395,12 @@ def plot_QAOA_landscape(
             betas_traj, gammas_traj,
             color="white", linewidth=0.8, alpha=0.5, zorder=3,
         )
-        # Intermediate steps — black dots
+        # Intermediate steps โ€” black dots
         ax.scatter(
             betas_traj[:-1], gammas_traj[:-1],
             c="black", s=25, marker="o", zorder=4, label="Trajectory",
         )
-        # Final (optimal) point — red star
+        # Final (optimal) point โ€” red star
         ax.scatter(
             [betas_traj[-1]], [gammas_traj[-1]],
             c="red", s=200, marker="o", zorder=5, label="Optimal",
@@ -355,16 +420,16 @@ def plot_QAOA_landscape(
             ax.legend(fontsize=10)
 
     ax.set_title(title, fontsize=14)
-    ax.set_xlabel("β (Mixer Angle)", fontsize=12)
-    ax.set_ylabel("γ (Cost Angle)", fontsize=12)
+    ax.set_xlabel("ฮฒ (Mixer Angle)", fontsize=12)
+    ax.set_ylabel("ฮณ (Cost Angle)", fontsize=12)
     ax.grid(False)
     fig.tight_layout()
     _show_or_save(fig, save_path)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 # Multi-mixer landscape comparison
-# ─────────────────────────────────────────────────────────────────────────────
+# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
 
 def draw_qaoa_landscape(
     G: nx.Graph,
@@ -373,7 +438,7 @@ def draw_qaoa_landscape(
     mixer_modes: tuple[str, ...] = ("X", "XX", "XY"),
     gamma_range: tuple[float, float] = (-np.pi / 2, np.pi / 2),
     beta_range:  tuple[float, float] = (-np.pi / 2, np.pi / 2),
-    title: str = "QAOA Landscape — p=1",
+    title: str = "QAOA Landscape โ€” p=1",
     share_colorscale: bool = True,
     save_path: SavePath = None,
 ) -> None:
@@ -390,9 +455,9 @@ def draw_qaoa_landscape(
     landscapes = {}
     gamma_vals = beta_vals = None
 
-    print(f"[vis] Computing {n_mixers} landscape(s) ({grid}×{grid} each) …")
+    print(f"[vis] Computing {n_mixers} landscape(s) ({grid}ร—{grid} each) โ€ฆ")
     for mode in mixer_modes:
-        print(f"  mixer = '{mode}' …")
+        print(f"  mixer = '{mode}' โ€ฆ")
         gv, bv, land = _compute_landscape(
             edges, n, grid, mode, gamma_range, beta_range
         )
@@ -432,15 +497,16 @@ def draw_qaoa_landscape(
         ax.scatter(
             [b_best], [g_best],
             c="red", s=160, marker="o", zorder=5,
-            label=f"max ⟨C⟩={land[idx]:.3f}",
+            label=f"max โจCโฉ={land[idx]:.3f}",
         )
         ax.legend(fontsize=9)
         ax.set_title(f"Mixer: {mode}", fontsize=12)
-        ax.set_xlabel("β (Mixer Angle)", fontsize=11)
+        ax.set_xlabel("ฮฒ (Mixer Angle)", fontsize=11)
         if ax is axes[0]:
-            ax.set_ylabel("γ (Cost Angle)", fontsize=11)
+            ax.set_ylabel("ฮณ (Cost Angle)", fontsize=11)
 
     # Shared colourbar on the right
-    fig.colorbar(contour_sets[-1], ax=axes, label="⟨C⟩ (Expected Cut Value)")
+    fig.colorbar(contour_sets[-1], ax=axes, label="โจCโฉ (Expected Cut Value)")
     #fig.subplots_adjust(left=0.08, right=0.88, top=0.88, bottom=0.12, wspace=0.15)
     _show_or_save(fig, save_path)
+

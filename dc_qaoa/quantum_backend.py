@@ -46,7 +46,9 @@ type Solutions = list[Solution]
 # ── Result store ───────────────────────────────────────────────────────────────
 FINAL_PARAMETERS: dict = {}  # id(subgraph) -> dict
 PARAMS_PATHS: dict = {}       # id(subgraph) -> parameter space's trajectory (list of dicts)
-LOSS_HISTORY: dict = {}      # id(subgraph) -> list[float]
+LOSS_HISTORY: dict = {}       # id(subgraph) -> list[float]
+ITER_LOSS_HISTORY: dict = {}  # id(subgraph) -> list[float] (callback/iteration-level loss)
+LOSS_LABELS: dict = {}        # id(subgraph) -> human-readable label for plotting
 
 def setup_qpu(qc_name: str = "8q-qvm") -> None:
     """
@@ -80,7 +82,7 @@ def run_simulation(prog: Program, memory_map, n: int = None) -> Any:
     executable = _QC.compile(prog.wrap_in_numshots_loop(_config.SHOTS))
     return _QC.run(executable, memory_map)
 
-def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> list[dict]:
+def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None, label: str = None) -> list[dict]:
     """
     Run weighted QAOA via pyQuil and return sampled solutions. Retun list of dictionary
 
@@ -106,7 +108,9 @@ def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> lis
 
     subgraph_id = id(subgraph)
     LOSS_HISTORY[subgraph_id] = []
+    ITER_LOSS_HISTORY[subgraph_id] = []
     PARAMS_PATHS[subgraph_id] = []
+    LOSS_LABELS[subgraph_id] = label or method
 
     # Compile parametric circuit once
     prog = build_qaoa_circuit(n, edges, _config.LAYER_COUNT, mixer_mode=_config.MIXER_MODE)
@@ -134,10 +138,11 @@ def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> lis
     # callback functions
     def cb_dual_annealing(xk, f, context):
         iter_count["k"] += 1
+        ITER_LOSS_HISTORY[id(subgraph)].append(float(f))
         PARAMS_PATHS[id(subgraph)].append({
             "iter": iter_count["k"],
             "nfev": last_eval["nfev"],
-            "loss": last_eval["loss"],
+            "loss": float(f),
             "params": np.array(xk, dtype=float, copy=True),
             "context": int(context),
         })
@@ -145,6 +150,8 @@ def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> lis
     
     def cb_minimize(xk):
         iter_count["k"] += 1
+        if last_eval["loss"] is not None:
+            ITER_LOSS_HISTORY[id(subgraph)].append(float(last_eval["loss"]))
         PARAMS_PATHS[id(subgraph)].append({
             "iter": iter_count["k"],
             "nfev": last_eval["nfev"],
@@ -154,6 +161,8 @@ def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> lis
 
     def cb_differential_evolution(xk, convergence):
         iter_count["k"] += 1
+        if last_eval["loss"] is not None:
+            ITER_LOSS_HISTORY[id(subgraph)].append(float(last_eval["loss"]))
         PARAMS_PATHS[id(subgraph)].append({
             "iter": iter_count["k"],
             "nfev": last_eval["nfev"],
@@ -245,7 +254,10 @@ def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> lis
     return cut_opt, params_opt
 
 def run_quantum(subgraph: nx.Graph, nodes: list, precondition):
-    cut_opt, params_opt = get_maxcut_params(subgraph, method=_config.OPTIMIZER, precondition=precondition)
+    _lbl = f"DC-QAOA [{_config.OPTIMIZER}]"
+    if precondition:
+        _lbl += f" + {precondition}"
+    cut_opt, params_opt = get_maxcut_params(subgraph, method=_config.OPTIMIZER, precondition=precondition, label=_lbl)
 
     edges, n = graph_compressed(subgraph)
     gammas_opt = params_opt[:_config.LAYER_COUNT].tolist()

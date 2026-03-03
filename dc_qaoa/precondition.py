@@ -43,7 +43,8 @@ def zij_p1_analytical(
     """
     from .quantum_backend import get_maxcut_params  # lazy import to avoid circular dep
 
-    _, params = get_maxcut_params(graph, method=_config.OPTIMIZER)
+    _, params = get_maxcut_params(graph, method=_config.OPTIMIZER,
+                                  label=f"precond:analytic-p1 [{_config.OPTIMIZER}]")
 
     nodes = list(graph.nodes())
     edges, n_node = graph_compressed(graph)
@@ -113,7 +114,8 @@ def zij_measurement(
     """calculate <Z_i Z_j>_p by direct simulation (works for any p and mixer)."""
     from .quantum_backend import get_maxcut_params, run_simulation  # lazy import
 
-    _, params = get_maxcut_params(graph, method=_config.OPTIMIZER)
+    _, params = get_maxcut_params(graph, method=_config.OPTIMIZER,
+                                  label=f"precond:measurement [{_config.OPTIMIZER}]")
 
     nodes = list(graph.nodes())
     edges, n_node = graph_compressed(graph)

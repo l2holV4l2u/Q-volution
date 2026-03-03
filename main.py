@@ -1,4 +1,4 @@
-"""
+﻿"""
 main.py -- Entry point for the DC-QAOA Max-Cut pipeline.
 
 Classical (no hardware needed):
@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--precondition", default=None,
                    choices=["analytic-p1", "measurement", "back-propagate"],
                    help="initial parameter strategy for QAOA (only with --quantum)")
+    p.add_argument("--plot-loss", action="store_true", default=False,
+                   help="Plot loss curve(s) after optimization (only with --quantum).")
+    p.add_argument("--save-plots", type=str, default=None, metavar="DIR",
+                   help="Save loss plots as PNGs to DIR instead of displaying interactively. "
+                        "Useful for headless server runs.")
     return p.parse_args()
 
 
@@ -80,6 +85,52 @@ def main() -> None:
     print(f"  Total time elapsed: {t_end-t_start:.2f} seconds")
     print(f"{'=' * 60}")
 
+    # โ”€โ”€ Loss plots โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+    if args.quantum and args.plot_loss:
+        try:
+            from dc_qaoa.quantum_backend import ITER_LOSS_HISTORY, LOSS_LABELS
+            from dc_qaoa.visualization import plot_loss_history
+        except ImportError:
+            sys.path.insert(0, "./")
+            from dc_qaoa.quantum_backend import ITER_LOSS_HISTORY, LOSS_LABELS
+            from dc_qaoa.visualization import plot_loss_history
+
+        save_dir = Path(args.save_plots) if args.save_plots else Path("output")
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        # Plot one curve only: choose the longest iteration history.
+        iter_candidates = [
+            (sg_id, losses)
+            for sg_id, losses in ITER_LOSS_HISTORY.items()
+            if losses
+        ]
+
+        if not iter_candidates:
+            print("[plot] No iteration loss history recorded.")
+        else:
+            sg_id, losses = max(iter_candidates, key=lambda item: len(item[1]))
+            dataset_name = graph_path.stem
+            precond_name = _config.PRECONDITION or "none"
+            title = (
+                f"Loss History (iteration) - {_config.OPTIMIZER} | "
+                f"precondition={precond_name} | dataset={dataset_name}"
+            )
+            save_path = save_dir / (
+                f"loss_{_config.OPTIMIZER}_pre-{precond_name}_data-{dataset_name}.png"
+            )
+            plot_loss_history(
+                losses,
+                title=title,
+                best_so_far=True,
+                relative_to_final=False,
+                x_axis_label="Iteration",
+                save_path=save_path,
+            )
+            print(
+                f"[plot] 1 loss curve ({len(losses)} iterations) saved to {save_path}. "
+                f"Selected subgraph id={sg_id}."
+            )
+
 
 if __name__ == "__main__":
     try:
@@ -87,3 +138,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print('\nInterrupted')
         sys.exit(0)
+
+
