@@ -16,6 +16,7 @@ Result store (populated after each solve, keyed by id(subgraph)):
 """
 from __future__ import annotations
 
+from typing import Any
 import time
 import numpy as np
 import networkx as nx
@@ -29,8 +30,9 @@ except ImportError:
     _PYQUIL_AVAILABLE = False
     
 from . import config as _config
+from .graph_loader import graph_compressed
+from .circuit import build_qaoa_circuit
 from .cost_function import *
-from .circuit import _build_qaoa_circuit
 
 # Global quantum computer handle (set by setup_qpu)
 _QC = None
@@ -64,9 +66,12 @@ def setup_qpu(qc_name: str = "8q-qvm") -> None:
         raise RuntimeError("pyquil is not installed. Run: pip install pyquil")
     _QC = get_qc(qc_name)
     print(f"[solver] Quantum computer set -> {qc_name}")
-    
 
-def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False, pcond_layer=1) -> list[dict]:
+def run_simulation(prog: Program, memory_map) -> Any :
+    exec = _QC.compile(prog.wrap_in_numshots_loop(config.SHOTS))
+    return _QC.run(exec, memory_map)
+
+def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None) -> list[dict]:
     """
     Run weighted QAOA via pyQuil and return sampled solutions. Retun list of dictionary
 
@@ -75,18 +80,15 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
     """
     global _QC
 
-    n          = len(nodes)
-    node_index = {v: i for i, v in enumerate(nodes)}
+    edges, n = graph_compressed(subgraph)
+    if precondition is not None:
+        if precondition == "analytic-p1":
+            pass
+        elif precondition == "light-cone":
+            pass
+        if precondition == "bruh":
+            pass
     
-    if precondition:
-        # pcond_edges = 
-        pass
-    else:
-        edges = [
-            (node_index[u], node_index[v], float(data.get("weight", 1.0)))
-            for u, v, data in subgraph.edges(data=True)
-        ]
-
     if _QC is None:
         qc_name = f"{n}q-qvm"
         _QC = get_qc(qc_name)
@@ -97,7 +99,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=False
     PARAMS_PATHS[subgraph_id] = []
 
     # Compile parametric circuit once
-    prog = _build_qaoa_circuit(n, edges, config.LAYER_COUNT, mixer_mode=config.MIXER_MODE)
+    prog = build_qaoa_circuit(n, edges, config.LAYER_COUNT, mixer_mode=config.MIXER_MODE)
     executable = _QC.compile(prog.wrap_in_numshots_loop(config.SHOTS))
 
     # calculate objective for optimization
