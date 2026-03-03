@@ -51,7 +51,7 @@ def solve_subgraph(subgraph: nx.Graph, top_t: int = 10) -> Solutions:
                 "_config.USE_QUANTUM=True but pyquil is not installed. "
                 "Run: pip install pyquil"
             )
-        raw = run_quantum(subgraph, nodes, _config.OPTIMIZER)
+        raw = run_quantum(subgraph, nodes, _config.PRECONDITION)
     else:
         raw = run_classical(nodes)
 

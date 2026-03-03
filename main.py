@@ -37,6 +37,9 @@ def parse_args() -> argparse.Namespace:
                         "Examples: 8q-qvm | Ankaa-3")
     p.add_argument("--optimizer",
                    help="classical optimizer method")
+    p.add_argument("--precondition", default=None,
+                   choices=["analytic-p1", "light-cone"],
+                   help="initial parameter strategy for QAOA (only with --quantum)")
     return p.parse_args()
 
 
@@ -49,8 +52,9 @@ def main() -> None:
         print(f"ERROR: File not found: {graph_path}")
         sys.exit(1)
 
-    _config.USE_QUANTUM = args.quantum
-    if args.optimizer: _config.OPTIMIZER = args.optimizer.upper()
+    _config.USE_QUANTUM  = args.quantum
+    if args.optimizer:    _config.OPTIMIZER    = args.optimizer.upper()
+    if args.precondition: _config.PRECONDITION = args.precondition
 
     if args.quantum:
         _solver_module.setup_qpu(args.qc)
@@ -60,7 +64,9 @@ def main() -> None:
     print("=" * 60)
     print(f"  Graph   : {graph_path}")
     print(f"  Backend : {'quantum (pyQuil QAOA) -- ' + args.qc if args.quantum else 'classical'}")
-    if args.quantum: print(f" Optimization method: {_config.OPTIMIZER} ")
+    if args.quantum:
+        print(f"  Optimizer   : {_config.OPTIMIZER}")
+        print(f"  Precondition: {_config.PRECONDITION or 'none (random init)'}")
     print("=" * 60)
 
     assignment, score = run_pipeline(

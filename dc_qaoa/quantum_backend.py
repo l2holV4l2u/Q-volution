@@ -67,11 +67,19 @@ def setup_qpu(qc_name: str = "8q-qvm") -> None:
     _QC = get_qc(qc_name)
     print(f"[solver] Quantum computer set -> {qc_name}")
 
-def run_simulation(prog: Program, memory_map) -> Any :
-    exec = _QC.compile(prog.wrap_in_numshots_loop(config.SHOTS))
-    return _QC.run(exec, memory_map)
+def run_simulation(prog: Program, memory_map, n: int = None) -> Any:
+    global _QC
+    if _QC is None:
+        if n is None:
+            raise RuntimeError("QVM not configured. Call setup_qpu() first.")
+        qc_name = f"{n}q-qvm"
+        _QC = get_qc(qc_name)
+        print(f"[solver] Auto-configured QVM: {qc_name}")
 
-def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None) -> list[dict]:
+    executable = _QC.compile(prog.wrap_in_numshots_loop(_config.SHOTS))
+    return _QC.run(executable, memory_map)
+
+def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> list[dict]:
     """
     Run weighted QAOA via pyQuil and return sampled solutions. Retun list of dictionary
 
@@ -79,37 +87,60 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None)
     Auto-configures a QVM if setup_qpu() was not called.
     """
     global _QC
-
     edges, n = graph_compressed(subgraph)
-    if precondition is not None:
-        if precondition == "analytic-p1":
-            pass
-        elif precondition == "light-cone":
-            pass
-        if precondition == "bruh":
-            pass
-    
     if _QC is None:
         qc_name = f"{n}q-qvm"
         _QC = get_qc(qc_name)
         print(f"[solver] Auto-configured QVM: {qc_name}")
-        
+
+    z0 = None
+    p  = _config.LAYER_COUNT
+
+    if precondition == "analytic-p1":
+        # Closed-form near-optimal angles for p=1 QAOA Max-Cut.
+        # gamma* = arctan(1 / sqrt(avg_degree - 1)) / 2  (perturbation theory)
+        # beta*  = pi/8  (known near-optimal for most graph families)
+        # For p > 1: linearly ramp gamma up and beta down across layers.
+        degrees   = [d for _, d in subgraph.degree()]
+        avg_deg   = max(np.mean(degrees), 2.0)
+        gamma_opt = np.arctan(1.0 / np.sqrt(avg_deg - 1.0)) / 2.0
+        beta_opt  = np.pi / 8.0
+        gammas = [gamma_opt * (k + 1) / p for k in range(p)]
+        betas  = [beta_opt  * (p - k)     / p for k in range(p)]
+        z0 = np.array(gammas + betas)
+        print(f"[precondition] analytic-p1: gamma_0={gamma_opt:.4f}, beta_0={beta_opt:.4f}")
+
+    elif precondition == "light-cone":
+        # Scale angles by local weighted connectivity.
+        # Denser graphs need smaller gamma (avoid phase overshooting).
+        # Betas decay across layers like a quantum annealing schedule.
+        w_degrees = [d for _, d in subgraph.degree(weight="weight")]
+        avg_w_deg = max(np.mean(w_degrees), 1.0)
+        gamma_base = np.pi / (4.0 * np.log2(avg_w_deg + 1.0))
+        beta_base  = np.pi / 4.0
+        gammas = [gamma_base * (k + 1) / p for k in range(p)]
+        betas  = [beta_base  * (p - k)     / p for k in range(p)]
+        z0 = np.array(gammas + betas)
+        print(f"[precondition] light-cone: gamma_base={gamma_base:.4f}, beta_base={beta_base:.4f}")
+
+    elif precondition == "bruh":
+        pass
+
     subgraph_id = id(subgraph)
     LOSS_HISTORY[subgraph_id] = []
     PARAMS_PATHS[subgraph_id] = []
 
     # Compile parametric circuit once
-    prog = build_qaoa_circuit(n, edges, config.LAYER_COUNT, mixer_mode=config.MIXER_MODE)
-    executable = _QC.compile(prog.wrap_in_numshots_loop(config.SHOTS))
+    prog = build_qaoa_circuit(n, edges, _config.LAYER_COUNT, mixer_mode=_config.MIXER_MODE)
 
     # calculate objective for optimization
     iter_count = {"k": 0}
     last_eval = {"x": None, "loss": None, "nfev": 0}
 
     def cost_func_estimator(params):
-        gammas_val = params[:config.LAYER_COUNT].tolist()
-        betas_val  = params[config.LAYER_COUNT:].tolist()
-        result     = _QC.run(executable, memory_map={"gammas": gammas_val, "betas": betas_val})
+        gammas_val = params[:_config.LAYER_COUNT].tolist()
+        betas_val  = params[_config.LAYER_COUNT:].tolist()
+        result     = run_simulation(prog, memory_map={"gammas": gammas_val, "betas": betas_val}, n=n)
         bitstrings = np.array(result.get_register_map().get("ro"))
         scores = [qaoa_cut_score(edges, bitstring) for bitstring in bitstrings]
         loss = -np.average(scores)
@@ -155,9 +186,10 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None)
         return False
 
     # arguments for scipy.optimize functions
-    bounds = [(-np.pi/2, np.pi/2)] * (2 * config.LAYER_COUNT)
-    rng = np.random.default_rng(config.SEED)
-    z0 = rng.uniform(-np.pi/2, np.pi/2, 2 * config.LAYER_COUNT)
+    bounds = [(-np.pi/2, np.pi/2)] * (2 * _config.LAYER_COUNT)
+    if z0 is None:
+        rng = np.random.default_rng(_config.SEED)
+        z0 = rng.uniform(-np.pi/2, np.pi/2, 2 * _config.LAYER_COUNT)
     
     t_start = time.perf_counter()
     print(f"using {method}...")
@@ -166,7 +198,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None)
             result = dual_annealing(
                 cost_func_estimator,
                 bounds=bounds,
-                maxiter=config.MAXITER,
+                maxiter=_config.MAXITER,
                 callback=cb_dual_annealing,
             )
 
@@ -174,7 +206,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None)
             result = differential_evolution(
                 cost_func_estimator,
                 bounds=bounds,
-                maxiter=config.MAXITER,
+                maxiter=_config.MAXITER,
                 callback=cb_differential_evolution,
             )
 
@@ -183,7 +215,7 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None)
                 cost_func_estimator,
                 z0,
                 method="SLSQP",
-                options={"maxiter": config.MAXITER},
+                options={"maxiter": _config.MAXITER},
                 callback=cb_minimize,
                 tol=1e-1,
             )
@@ -215,15 +247,15 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None)
 
     print(f"[solver] QAOA best E[cut]: {cut_opt:.4f}")
 
-    gammas_opt = params_opt[:config.LAYER_COUNT].tolist()
-    betas_opt  = params_opt[config.LAYER_COUNT:].tolist()
+    gammas_opt = params_opt[:_config.LAYER_COUNT].tolist()
+    betas_opt  = params_opt[_config.LAYER_COUNT:].tolist()
 
     FINAL_PARAMETERS[id(subgraph)] = {
         "gammas":      gammas_opt,
         "betas":       betas_opt,
         "best_e_cut":  cut_opt,
-        "mixer_mode":  config.MIXER_MODE,
-        "n_layers":    config.LAYER_COUNT,
+        "mixer_mode":  _config.MIXER_MODE,
+        "n_layers":    _config.LAYER_COUNT,
         "n_qubits":    n,
     }
     print(
@@ -231,10 +263,24 @@ def run_quantum(subgraph: nx.Graph, nodes: list, method="SA", precondition=None)
         f"gammas={[f'{g:.4f}' for g in gammas_opt]} | "
         f"betas={[f'{b:.4f}' for b in betas_opt]}"
     )
+    
+    return cut_opt, params_opt
+
+def run_quantum(subgraph: nx.Graph, nodes: list, precondition):
+    cut_opt, params_opt = get_maxcut_params(subgraph, method=_config.OPTIMIZER, precondition=precondition)
+
+    edges, n = graph_compressed(subgraph)
+    gammas_opt = params_opt[:_config.LAYER_COUNT].tolist()
+    betas_opt  = params_opt[_config.LAYER_COUNT:].tolist()
 
     # Final sample at optimal parameters
+    prog = build_qaoa_circuit(n, edges, _config.LAYER_COUNT, mixer_mode=_config.MIXER_MODE)
+    executable = _QC.compile(prog.wrap_in_numshots_loop(_config.SHOTS))
     result_final = _QC.run(executable, memory_map={"gammas": gammas_opt, "betas": betas_opt})
     bitstrings = np.array(result_final.get_register_map().get("ro"))
+
+    print(f"\n[result] cut_opt    = {cut_opt:.6f}")
+    print(f"[result] params_opt = {params_opt.tolist()}\n")
 
     # encode bit 0 to 1 and 1 to -1
     return [
