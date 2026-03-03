@@ -170,6 +170,7 @@ def run_optimizer_diagnostics(
             beta_runs.append(betas)
             prob_runs.append(probs)
             print(f"  run {r+1}/{runs}: iters={len(iter_losses)} states={len(probs)}")
+            print("")
 
         all_states = sorted({s for pr in prob_runs for s in pr.keys()}, key=lambda b: int(b, 2))
         avg_prob = {
@@ -243,8 +244,67 @@ def run_optimizer_diagnostics(
     fig2.savefig(plot2, dpi=140, bbox_inches="tight")
     plt.close(fig2)
 
+    # Save plotted data to Excel
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise RuntimeError(
+            "pandas is required for Excel export. Install with: pip install pandas openpyxl"
+        ) from exc
+
+    max_iter = 0
+    for variant_label, _ in variants:
+        max_iter = max(
+            max_iter,
+            len(variant_stats[variant_label]["loss_avg"]),
+            len(variant_stats[variant_label]["gamma_avg"]),
+            len(variant_stats[variant_label]["beta_avg"]),
+        )
+
+    loss_param_df = pd.DataFrame({"iteration": np.arange(1, max_iter + 1, dtype=int)})
+    for variant_label, _ in variants:
+        key = variant_label
+        loss_avg = variant_stats[key]["loss_avg"]
+        gamma_avg = variant_stats[key]["gamma_avg"]
+        beta_avg = variant_stats[key]["beta_avg"]
+
+        loss_param_df[f"{key} | loss"] = pd.Series(loss_avg)
+        loss_param_df[f"{key} | gamma"] = pd.Series(gamma_avg)
+        loss_param_df[f"{key} | beta"] = pd.Series(beta_avg)
+
+    prob_states = sorted(
+        {s for variant_label, _ in variants for s in variant_stats[variant_label]["prob_avg"].keys()},
+        key=lambda b: int(b, 2),
+    )
+    prob_df = pd.DataFrame({"bitstring": prob_states})
+    for variant_label, _ in variants:
+        probs = variant_stats[variant_label]["prob_avg"]
+        prob_df[variant_label] = [probs.get(s, 0.0) for s in prob_states]
+    sum_row = {"bitstring": "SUM"}
+    for variant_label, _ in variants:
+        sum_row[variant_label] = float(prob_df[variant_label].sum())
+    prob_df = pd.concat([prob_df, pd.DataFrame([sum_row])], ignore_index=True)
+
+    meta_df = pd.DataFrame(
+        [
+            {"key": "dataset", "value": dataset},
+            {"key": "optimizer", "value": opt},
+            {"key": "with_precondition", "value": with_precondition},
+            {"key": "runs", "value": runs},
+            {"key": "qc_name", "value": qc_name},
+            {"key": "n_nodes_used", "value": G.number_of_nodes()},
+        ]
+    )
+
+    excel_path = out_dir / f"benchmark_data_{dataset}_{opt}_vs_{with_precondition}.xlsx"
+    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+        meta_df.to_excel(writer, sheet_name="metadata", index=False)
+        loss_param_df.to_excel(writer, sheet_name="loss_params", index=False)
+        prob_df.to_excel(writer, sheet_name="final_probability", index=False)
+
     print(f"[diag] Saved plot: {plot1}")
     print(f"[diag] Saved plot: {plot2}")
+    print(f"[diag] Saved excel: {excel_path}")
 
 
 def random_assignment(G: nx.Graph, trials: int = 1000) -> tuple[dict, float]:

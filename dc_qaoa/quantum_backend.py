@@ -268,8 +268,8 @@ def run_quantum(subgraph: nx.Graph, nodes: list, precondition):
     result_final = _QC.run(executable, memory_map={"gammas": gammas_opt, "betas": betas_opt})
     bitstrings = np.array(result_final.get_register_map().get("ro"))
 
-    print(f"\n[result] cut_opt    = {cut_opt:.6f}")
-    print(f"[result] params_opt = {params_opt.tolist()}\n")
+    print(f"[result] cut_opt    = {cut_opt:.6f}")
+    print(f"[result] params_opt = {params_opt.tolist()}")
 
     # encode bit 0 to 1 and 1 to -1
     return [
