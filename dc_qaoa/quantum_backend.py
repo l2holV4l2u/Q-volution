@@ -170,7 +170,6 @@ def get_maxcut_params(subgraph: nx.Graph, method="SA", precondition=None) -> lis
         z0 = rng.uniform(-np.pi/2, np.pi/2, 2 * _config.LAYER_COUNT)
     
     t_start = time.perf_counter()
-    print(f"using {method}...")
     match method:
         case "SA":
             result = dual_annealing(
