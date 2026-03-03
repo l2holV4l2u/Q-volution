@@ -49,15 +49,14 @@ CUTSET_M  = 4    # stop reduction when |min-vertex-cut| >= M  (2^M assignments)
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Benchmark DC-QAOA and plot optimizer diagnostics.")
     p.add_argument("input", nargs="?", help="Path to graph .parquet file.")
-    p.add_argument("--optimizer", type=str, default="COBYLA",
-                   help="Optimizer used in both compared variants (default: COBYLA).")
+    p.add_argument("--methods", nargs="+", default=["SLSQP", "COBYLA", "COBYQA"],
+                   help="Optimizers to run. Default: SLSQP COBYLA COBYQA")
+    p.add_argument("--preconditions", nargs="+", default=["none", "back-propagate", "analytic-p1"],
+                   help="Preconditions to run. Use 'none' for no precondition.")
     p.add_argument("--runs", type=int, default=5,
                    help="Number of training runs per optimizer (diagnostics mode).")
     p.add_argument("--qc", type=str, default="8q-qvm",
                    help="pyQuil quantum computer target for diagnostics mode.")
-    p.add_argument("--with-precondition", default="back-propagate",
-                   choices=["analytic-p1", "measurement", "back-propagate"],
-                   help="Precondition used for the second compared variant.")
     p.add_argument("--output-dir", type=str, default="output",
                    help="Directory to save diagnostics plots.")
     return p.parse_args()
@@ -108,8 +107,8 @@ def _solutions_to_probability(samples: list[dict], nodes: list) -> dict[str, flo
 
 def run_optimizer_diagnostics(
     graph_path: str | Path,
-    optimizer: str = "COBYLA",
-    with_precondition: str = "back-propagate",
+    methods: list[str] | None = None,
+    preconditions: list[str] | None = None,
     runs: int = 5,
     qc_name: str = "8q-qvm",
     output_dir: str | Path = "output",
@@ -136,13 +135,20 @@ def run_optimizer_diagnostics(
     variant_stats: dict[str, dict] = {}
     nodes = list(G.nodes())
     layer_count = qconfig.LAYER_COUNT
-    opt = optimizer.upper()
-    variants = [
-        (f"{opt} (no precondition)", None),
-        (f"{opt} + {with_precondition}", with_precondition),
-    ]
+    methods = methods or ["SLSQP", "COBYLA", "COBYQA"]
+    preconditions = preconditions or ["none", "back-propagate", "analytic-p1"]
 
-    for variant_label, precondition in variants:
+    variants: list[tuple[str, str, str | None, str]] = []
+    for method in methods:
+        method_u = method.upper()
+        for p in preconditions:
+            p_norm = str(p).strip().lower()
+            pre = None if p_norm in {"none", "null", ""} else p
+            pre_label = "none" if pre is None else str(pre)
+            label = f"{method_u} | pre={pre_label}"
+            variants.append((label, method_u, pre, pre_label))
+
+    for variant_label, method_u, precondition, _ in variants:
         qconfig.PRECONDITION = precondition
         print(f"[diag] Variant={variant_label} | runs={runs}")
         loss_runs: list[list[float]] = []
@@ -151,7 +157,7 @@ def run_optimizer_diagnostics(
         prob_runs: list[dict[str, float]] = []
 
         for r in range(runs):
-            qconfig.OPTIMIZER = opt
+            qconfig.OPTIMIZER = method_u
             qconfig.SEED = 42 + r
             before_ids = set(ITER_LOSS_HISTORY.keys())
             samples = run_quantum(G, nodes, precondition)
@@ -186,7 +192,7 @@ def run_optimizer_diagnostics(
 
     # Plot 1: loss + params vs iteration (averaged over runs)
     fig1, (ax_loss, ax_param) = plt.subplots(2, 1, figsize=(12, 9), sharex=False)
-    for variant_label, _ in variants:
+    for variant_label, _, _, _ in variants:
         loss_avg = variant_stats[variant_label]["loss_avg"]
         gamma_avg = variant_stats[variant_label]["gamma_avg"]
         beta_avg = variant_stats[variant_label]["beta_avg"]
@@ -218,16 +224,18 @@ def run_optimizer_diagnostics(
     ax_param.legend()
 
     fig1.tight_layout()
-    plot1 = out_dir / f"avg_loss_params_{dataset}_{opt}_vs_{with_precondition}.png"
+    plot1 = out_dir / f"avg_loss_params_{dataset}_all_combinations.png"
     fig1.savefig(plot1, dpi=140, bbox_inches="tight")
     plt.close(fig1)
 
     # Plot 2: final probability distribution (averaged over runs), one panel per compared variant
-    fig2, axes = plt.subplots(1, len(variants), figsize=(7 * len(variants), 5), sharey=True)
-    if len(variants) == 1:
-        axes = [axes]
+    n_variants = len(variants)
+    ncols = 3
+    nrows = int(np.ceil(n_variants / ncols))
+    fig2, axes = plt.subplots(nrows, ncols, figsize=(7 * ncols, 4.5 * nrows), sharey=True)
+    axes = np.array(axes).reshape(-1)
 
-    for ax, (variant_label, _) in zip(axes, variants):
+    for ax, (variant_label, _, _, _) in zip(axes, variants):
         prob = variant_stats[variant_label]["prob_avg"]
         states = sorted(prob.keys(), key=lambda b: int(b, 2))
         values = [prob[s] for s in states]
@@ -238,9 +246,11 @@ def run_optimizer_diagnostics(
         ax.set_xticks(np.arange(len(states)))
         ax.set_xticklabels(states, rotation=90, fontsize=8)
         ax.grid(True, axis="y", alpha=0.35)
+    for ax in axes[n_variants:]:
+        ax.axis("off")
 
     fig2.tight_layout()
-    plot2 = out_dir / f"avg_final_probability_{dataset}_{opt}_vs_{with_precondition}.png"
+    plot2 = out_dir / f"avg_final_probability_{dataset}_all_combinations.png"
     fig2.savefig(plot2, dpi=140, bbox_inches="tight")
     plt.close(fig2)
 
@@ -253,7 +263,7 @@ def run_optimizer_diagnostics(
         ) from exc
 
     max_iter = 0
-    for variant_label, _ in variants:
+    for variant_label, _, _, _ in variants:
         max_iter = max(
             max_iter,
             len(variant_stats[variant_label]["loss_avg"]),
@@ -262,7 +272,7 @@ def run_optimizer_diagnostics(
         )
 
     loss_param_df = pd.DataFrame({"iteration": np.arange(1, max_iter + 1, dtype=int)})
-    for variant_label, _ in variants:
+    for variant_label, _, _, _ in variants:
         key = variant_label
         loss_avg = variant_stats[key]["loss_avg"]
         gamma_avg = variant_stats[key]["gamma_avg"]
@@ -273,30 +283,31 @@ def run_optimizer_diagnostics(
         loss_param_df[f"{key} | beta"] = pd.Series(beta_avg)
 
     prob_states = sorted(
-        {s for variant_label, _ in variants for s in variant_stats[variant_label]["prob_avg"].keys()},
+        {s for variant_label, _, _, _ in variants for s in variant_stats[variant_label]["prob_avg"].keys()},
         key=lambda b: int(b, 2),
     )
     prob_df = pd.DataFrame({"bitstring": prob_states})
-    for variant_label, _ in variants:
+    for variant_label, _, _, _ in variants:
         probs = variant_stats[variant_label]["prob_avg"]
         prob_df[variant_label] = [probs.get(s, 0.0) for s in prob_states]
     sum_row = {"bitstring": "SUM"}
-    for variant_label, _ in variants:
+    for variant_label, _, _, _ in variants:
         sum_row[variant_label] = float(prob_df[variant_label].sum())
     prob_df = pd.concat([prob_df, pd.DataFrame([sum_row])], ignore_index=True)
 
     meta_df = pd.DataFrame(
         [
             {"key": "dataset", "value": dataset},
-            {"key": "optimizer", "value": opt},
-            {"key": "with_precondition", "value": with_precondition},
+            {"key": "methods", "value": ",".join([m.upper() for m in methods])},
+            {"key": "preconditions", "value": ",".join(["none" if str(p).strip().lower() in {"none", "null", ""} else str(p) for p in preconditions])},
+            {"key": "n_combinations", "value": len(variants)},
             {"key": "runs", "value": runs},
             {"key": "qc_name", "value": qc_name},
             {"key": "n_nodes_used", "value": G.number_of_nodes()},
         ]
     )
 
-    excel_path = out_dir / f"benchmark_data_{dataset}_{opt}_vs_{with_precondition}.xlsx"
+    excel_path = out_dir / f"benchmark_data_{dataset}_all_combinations.xlsx"
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
         meta_df.to_excel(writer, sheet_name="metadata", index=False)
         loss_param_df.to_excel(writer, sheet_name="loss_params", index=False)
@@ -461,8 +472,8 @@ def main():
 
     run_optimizer_diagnostics(
         graph_path=graph_path,
-        optimizer=args.optimizer,
-        with_precondition=args.with_precondition,
+        methods=args.methods,
+        preconditions=args.preconditions,
         runs=args.runs,
         qc_name=args.qc,
         output_dir=args.output_dir,

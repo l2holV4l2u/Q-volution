@@ -183,8 +183,48 @@ def main():
     else:
         paths = sys.argv[1:]
 
+    overall_rows = []
     for path in paths:
         print_report(path)
+
+        G = load_graph(path)
+        name = Path(path).stem
+        n = G.number_of_nodes()
+        m = G.number_of_edges()
+        std = estimate_standard_qaoa(G, layers=1)
+        dc = estimate_dcqaoa(G, max_size=8, layers=1)
+        overall_rows.append(
+            {
+                "name": name,
+                "nodes": n,
+                "edges": m,
+                "std_qubits": std["qubits"],
+                "std_iswaps_routed": std["total_iswaps_routed"],
+                "std_feasible": std["feasible_qubits"] and std["feasible_gates"],
+                "dc_subgraphs": dc["num_subgraphs"],
+                "dc_max_nodes": dc["max_nodes"],
+                "dc_max_iswaps_routed": dc["max_iswaps_routed"],
+                "dc_feasible": dc["all_fit_qubits"] and dc["all_fit_gates"],
+            }
+        )
+
+    if overall_rows:
+        print(f"\n{'='*96}")
+        print("  OVERALL SUMMARY (p=1, DC-QAOA max_size=8)")
+        print(f"{'='*96}")
+        print(
+            f"{'Dataset':<14} {'Nodes':>5} {'Edges':>5} "
+            f"{'StdQ':>6} {'Std iSWAP(r)':>13} {'Std OK':>7} "
+            f"{'DC SubG':>8} {'DC MaxQ':>8} {'DC iSWAP(r)':>12} {'DC OK':>7}"
+        )
+        print("-" * 96)
+        for row in overall_rows:
+            print(
+                f"{row['name']:<14} {row['nodes']:>5} {row['edges']:>5} "
+                f"{row['std_qubits']:>6} {row['std_iswaps_routed']:>13} {('YES' if row['std_feasible'] else 'NO'):>7} "
+                f"{row['dc_subgraphs']:>8} {row['dc_max_nodes']:>8} {row['dc_max_iswaps_routed']:>12} {('YES' if row['dc_feasible'] else 'NO'):>7}"
+            )
+        print("=" * 96)
 
 
 if __name__ == "__main__":
