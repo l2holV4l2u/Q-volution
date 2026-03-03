@@ -18,12 +18,17 @@ For reference, the theoretical best classical guarantee is:
 """
 from __future__ import annotations
 
+import argparse
 import random
 import time
 import sys
 from pathlib import Path
+from collections import Counter
 
 import networkx as nx
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 # Ensure benchmark uses the local workspace package implementation first.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +45,206 @@ MAX_SIZE  = 8    # max subgraph size passed to DC-QAOA partitioner
 TOP_T     = 10   # top-t solutions kept per subgraph for merge
 CUTSET_M  = 4    # stop reduction when |min-vertex-cut| >= M  (2^M assignments)
 # ------------------------------------------------------------------------------
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Benchmark DC-QAOA and plot optimizer diagnostics.")
+    p.add_argument("input", nargs="?", help="Path to graph .parquet file.")
+    p.add_argument("--optimizer", type=str, default="COBYLA",
+                   help="Optimizer used in both compared variants (default: COBYLA).")
+    p.add_argument("--runs", type=int, default=5,
+                   help="Number of training runs per optimizer (diagnostics mode).")
+    p.add_argument("--qc", type=str, default="8q-qvm",
+                   help="pyQuil quantum computer target for diagnostics mode.")
+    p.add_argument("--with-precondition", default="back-propagate",
+                   choices=["analytic-p1", "measurement", "back-propagate"],
+                   help="Precondition used for the second compared variant.")
+    p.add_argument("--output-dir", type=str, default="output",
+                   help="Directory to save diagnostics plots.")
+    return p.parse_args()
+
+
+def _average_variable_length(series_list: list[list[float]]) -> np.ndarray:
+    if not series_list:
+        return np.array([], dtype=float)
+    max_len = max(len(s) for s in series_list)
+    arr = np.full((len(series_list), max_len), np.nan, dtype=float)
+    for i, s in enumerate(series_list):
+        if s:
+            arr[i, :len(s)] = np.asarray(s, dtype=float)
+    return np.nanmean(arr, axis=0)
+
+
+def _best_so_far(series: list[float]) -> list[float]:
+    if not series:
+        return []
+    arr = np.asarray(series, dtype=float)
+    return np.minimum.accumulate(arr).tolist()
+
+
+def _extract_gamma_beta_per_iteration(path_entries: list, layer_count: int) -> tuple[list[float], list[float]]:
+    gammas: list[float] = []
+    betas: list[float] = []
+    iter_entries = [e for e in path_entries if isinstance(e, dict) and "iter" in e and "params" in e]
+    iter_entries.sort(key=lambda e: e["iter"])
+    for e in iter_entries:
+        params = np.asarray(e["params"], dtype=float).ravel()
+        if len(params) < 2 * layer_count:
+            continue
+        gammas.append(float(params[0]))
+        betas.append(float(params[layer_count]))
+    return gammas, betas
+
+
+def _solutions_to_probability(samples: list[dict], nodes: list) -> dict[str, float]:
+    counts = Counter()
+    for sol in samples:
+        bits = "".join("0" if sol[v] == 1 else "1" for v in nodes)
+        counts[bits] += 1
+    total = sum(counts.values())
+    if total == 0:
+        return {}
+    return {k: v / total for k, v in counts.items()}
+
+
+def run_optimizer_diagnostics(
+    graph_path: str | Path,
+    optimizer: str = "COBYLA",
+    with_precondition: str = "back-propagate",
+    runs: int = 5,
+    qc_name: str = "8q-qvm",
+    output_dir: str | Path = "output",
+) -> None:
+    from dc_qaoa.solver import setup_qpu
+    from dc_qaoa.quantum_backend import run_quantum, ITER_LOSS_HISTORY, PARAMS_PATHS
+
+    G_full = load_graph(graph_path)
+    dataset = Path(graph_path).stem
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Keep diagnostics feasible on QVM: use an induced subgraph up to MAX_SIZE nodes.
+    if G_full.number_of_nodes() > MAX_SIZE:
+        nodes_sub = list(G_full.nodes())[:MAX_SIZE]
+        G = G_full.subgraph(nodes_sub).copy()
+        print(f"[diag] Using induced subgraph with {G.number_of_nodes()} nodes for training plots.")
+    else:
+        G = G_full.copy()
+
+    qconfig.USE_QUANTUM = True
+    setup_qpu(qc_name)
+
+    variant_stats: dict[str, dict] = {}
+    nodes = list(G.nodes())
+    layer_count = qconfig.LAYER_COUNT
+    opt = optimizer.upper()
+    variants = [
+        (f"{opt} (no precondition)", None),
+        (f"{opt} + {with_precondition}", with_precondition),
+    ]
+
+    for variant_label, precondition in variants:
+        qconfig.PRECONDITION = precondition
+        print(f"[diag] Variant={variant_label} | runs={runs}")
+        loss_runs: list[list[float]] = []
+        gamma_runs: list[list[float]] = []
+        beta_runs: list[list[float]] = []
+        prob_runs: list[dict[str, float]] = []
+
+        for r in range(runs):
+            qconfig.OPTIMIZER = opt
+            qconfig.SEED = 42 + r
+            before_ids = set(ITER_LOSS_HISTORY.keys())
+            samples = run_quantum(G, nodes, precondition)
+            after_ids = set(ITER_LOSS_HISTORY.keys())
+
+            # If key already existed (same object id), fallback to id(G).
+            new_ids = list(after_ids - before_ids)
+            sg_id = new_ids[-1] if new_ids else id(G)
+
+            iter_losses = _best_so_far(list(ITER_LOSS_HISTORY.get(sg_id, [])))
+            gammas, betas = _extract_gamma_beta_per_iteration(PARAMS_PATHS.get(sg_id, []), layer_count)
+            probs = _solutions_to_probability(samples, nodes)
+
+            loss_runs.append(iter_losses)
+            gamma_runs.append(gammas)
+            beta_runs.append(betas)
+            prob_runs.append(probs)
+            print(f"  run {r+1}/{runs}: iters={len(iter_losses)} states={len(probs)}")
+
+        all_states = sorted({s for pr in prob_runs for s in pr.keys()}, key=lambda b: int(b, 2))
+        avg_prob = {
+            s: float(np.mean([pr.get(s, 0.0) for pr in prob_runs]))
+            for s in all_states
+        }
+        variant_stats[variant_label] = {
+            "loss_avg": np.minimum.accumulate(_average_variable_length(loss_runs)),
+            "gamma_avg": _average_variable_length(gamma_runs),
+            "beta_avg": _average_variable_length(beta_runs),
+            "prob_avg": avg_prob,
+        }
+
+    # Plot 1: loss + params vs iteration (averaged over runs)
+    fig1, (ax_loss, ax_param) = plt.subplots(2, 1, figsize=(12, 9), sharex=False)
+    for variant_label, _ in variants:
+        loss_avg = variant_stats[variant_label]["loss_avg"]
+        gamma_avg = variant_stats[variant_label]["gamma_avg"]
+        beta_avg = variant_stats[variant_label]["beta_avg"]
+
+        if len(loss_avg) > 0:
+            x_loss = np.arange(1, len(loss_avg) + 1, dtype=int)
+            ax_loss.plot(x_loss, loss_avg, marker="o", linewidth=1.6, label=variant_label)
+        if len(gamma_avg) > 0:
+            x_g = np.arange(1, len(gamma_avg) + 1, dtype=int)
+            ax_param.plot(x_g, gamma_avg, marker="o", linewidth=1.4, label=f"{variant_label} gamma")
+        if len(beta_avg) > 0:
+            x_b = np.arange(1, len(beta_avg) + 1, dtype=int)
+            ax_param.plot(x_b, beta_avg, marker="s", linewidth=1.4, label=f"{variant_label} beta")
+
+    ax_loss.set_title(
+        f"Average Loss per Iteration ({runs} runs) | dataset={dataset}"
+    )
+    ax_loss.set_xlabel("Iteration")
+    ax_loss.set_ylabel("Loss (Negative Expected Cut)")
+    ax_loss.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax_loss.grid(True, alpha=0.35)
+    ax_loss.legend()
+
+    ax_param.set_title(f"Average Parameters per Iteration ({runs} runs)")
+    ax_param.set_xlabel("Iteration")
+    ax_param.set_ylabel("Parameter Value")
+    ax_param.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax_param.grid(True, alpha=0.35)
+    ax_param.legend()
+
+    fig1.tight_layout()
+    plot1 = out_dir / f"avg_loss_params_{dataset}_{opt}_vs_{with_precondition}.png"
+    fig1.savefig(plot1, dpi=140, bbox_inches="tight")
+    plt.close(fig1)
+
+    # Plot 2: final probability distribution (averaged over runs), one panel per compared variant
+    fig2, axes = plt.subplots(1, len(variants), figsize=(7 * len(variants), 5), sharey=True)
+    if len(variants) == 1:
+        axes = [axes]
+
+    for ax, (variant_label, _) in zip(axes, variants):
+        prob = variant_stats[variant_label]["prob_avg"]
+        states = sorted(prob.keys(), key=lambda b: int(b, 2))
+        values = [prob[s] for s in states]
+        ax.bar(np.arange(len(states)), values, color="steelblue")
+        ax.set_title(f"{variant_label} final distribution (avg {runs} runs)")
+        ax.set_xlabel("Bitstring")
+        ax.set_ylabel("Probability")
+        ax.set_xticks(np.arange(len(states)))
+        ax.set_xticklabels(states, rotation=90, fontsize=8)
+        ax.grid(True, axis="y", alpha=0.35)
+
+    fig2.tight_layout()
+    plot2 = out_dir / f"avg_final_probability_{dataset}_{opt}_vs_{with_precondition}.png"
+    fig2.savefig(plot2, dpi=140, bbox_inches="tight")
+    plt.close(fig2)
+
+    print(f"[diag] Saved plot: {plot1}")
+    print(f"[diag] Saved plot: {plot2}")
 
 
 def random_assignment(G: nx.Graph, trials: int = 1000) -> tuple[dict, float]:
@@ -179,19 +384,30 @@ def graph_decomposition_qaoa(G: nx.Graph, M: int = CUTSET_M) -> tuple[dict, floa
 
 
 def main():
+    args = parse_args()
     random.seed(42)
     # Benchmark compares against classical baselines; keep backend deterministic and fast.
     qconfig.USE_QUANTUM = False
 
     # Find graph
-    if len(sys.argv) > 1:
-        graph_path = sys.argv[1]
+    if args.input:
+        graph_path = args.input
     else:
         candidates = sorted(Path("..").glob("*.parquet"))
         if not candidates:
             print("Usage: python benchmark.py <graph.parquet>")
             sys.exit(1)
         graph_path = str(candidates[0])
+
+    run_optimizer_diagnostics(
+        graph_path=graph_path,
+        optimizer=args.optimizer,
+        with_precondition=args.with_precondition,
+        runs=args.runs,
+        qc_name=args.qc,
+        output_dir=args.output_dir,
+    )
+    return
 
     print(f"Graph: {graph_path}")
     print("=" * 70)
