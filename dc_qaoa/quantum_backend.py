@@ -16,7 +16,7 @@ Result store (populated after each solve, keyed by id(subgraph)):
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeAlias
 import time
 import numpy as np
 import networkx as nx
@@ -40,8 +40,8 @@ _QC = None
 
 # Data types
 from typing import Literal
-type Solution = dict[int, Literal[1, -1]]  # {node_id: +1 | -1}
-type Solutions = list[Solution]
+Solution: TypeAlias = dict[int, Literal[1, -1]]  # {node_id: +1 | -1}
+Solutions: TypeAlias = list[Solution]
 
 # ── Result store ───────────────────────────────────────────────────────────────
 FINAL_PARAMETERS: dict = {}  # id(subgraph) -> dict

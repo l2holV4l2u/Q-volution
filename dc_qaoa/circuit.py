@@ -5,7 +5,7 @@ from pyquil import Program, get_qc
 from pyquil.gates import Gate, H, RZ, RX, CNOT, MEASURE
 from pyquil.quil import MemoryReference
 
-from .graph import edges
+from .graph import Edges
 
 # QUANTUM GATES
 def MEASURE_ZZ(counts, i, j):
@@ -18,7 +18,7 @@ def MEASURE_ZZ(counts, i, j):
         expectation += (count / total_shots) * eigenvalue
     return expectation
 
-def U_C(edges: edges, param: MemoryReference) -> tuple[Gate]:
+def U_C(edges: Edges, param: MemoryReference) -> tuple[Gate]:
     gate = ()
     for (u, v, w) in edges:
         gate += (CNOT(u, v), )
@@ -32,7 +32,7 @@ def U_X(n_qubits : int, param: MemoryReference) -> tuple[Gate]:
         gate += (RX(param * 2.0, q), )
     return gate
 
-def U_XX(edges: edges, param: MemoryReference) -> tuple[Gate]:
+def U_XX(edges: Edges, param: MemoryReference) -> tuple[Gate]:
     gate = ()
     for (u, v, _w) in edges:
         gate += (H(u), )
@@ -44,7 +44,7 @@ def U_XX(edges: edges, param: MemoryReference) -> tuple[Gate]:
         prog += (H(v), )
     return gate
 
-def U_XY(edges: edges, param: MemoryReference) -> tuple[Gate]:
+def U_XY(edges: Edges, param: MemoryReference) -> tuple[Gate]:
     gate = ()
     for (u, v, _) in edges:
         # exp(-i * beta/2 * XX)
