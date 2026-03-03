@@ -110,6 +110,93 @@ def _exact_fixed_K(
     return best
 
 
+def _heuristic_fixed_K(
+    subgraph: nx.Graph,
+    V2_nodes: list,
+    K_assignment: Solution,
+    max_size: int = 8,
+    top_t: int = 10,
+) -> float:
+    """
+    Approximate full_objective on `subgraph` with K pinned, for large V2.
+
+    Encodes K-V2 edge effects as MaxCut edges to a reference node, then
+    uses DC-QAOA (solve_maxcut_dc_qaoa) to find a good V2 assignment.
+    Evaluates the true full_objective on the result.
+    """
+    from .solver import solve_maxcut_dc_qaoa
+
+    V2_set = set(V2_nodes)
+    K_set  = set(K_assignment.keys())
+    # Use an integer ref node that doesn't clash with any real node
+    all_ids = [n for n in V2_nodes] + [n for n in K_assignment]
+    ref = max((n for n in all_ids if isinstance(n, int)), default=-1) + 1
+
+    V2_graph   = nx.Graph()
+    V2_graph.add_nodes_from(V2_nodes)
+    ref_edges: dict = {}  # v_node -> cumulative weight for (ref, v) MaxCut edge
+    const = 0.0
+
+    for u, v, data in subgraph.edges(data=True):
+        w       = data.get("weight", 1.0)
+        is_qubo = data.get("qubo", False)
+        u_v2, v_v2 = u in V2_set, v in V2_set
+        u_k,  v_k  = u in K_set,  v in K_set
+
+        if u_v2 and v_v2:
+            # V2-V2: keep as plain MaxCut (qubo flag ignored — heuristic)
+            V2_graph.add_edge(u, v, weight=w)
+
+        elif (u_k and v_v2) or (v_k and u_v2):
+            k_node = u if u_k else v
+            v_node = v if u_k else u
+            zk = K_assignment[k_node]
+            xk = (1.0 - zk) / 2.0
+            if is_qubo:
+                # w*xk*xv  →  (ref, v_node, w*xk) MaxCut when z_ref=+1
+                edge_w = w * xk
+            else:
+                # w*(1-zk*zv)/2  →  const (w-w*zk)/2 + (ref, v_node, w*zk) MaxCut
+                edge_w = w * zk
+                const += (w - w * zk) / 2.0
+            ref_edges[v_node] = ref_edges.get(v_node, 0.0) + edge_w
+
+        elif u_k and v_k:
+            # K-K: pure constant
+            zu, zv = K_assignment[u], K_assignment[v]
+            if is_qubo:
+                const += w * ((1.0 - zu) / 2.0) * ((1.0 - zv) / 2.0)
+            else:
+                const += w * (1.0 - zu * zv) / 2.0
+
+    # K node biases are constants
+    for node, data in subgraph.nodes(data=True):
+        if node in K_set:
+            bias = data.get("bias", 0.0)
+            if abs(bias) > 1e-12:
+                const += bias * (1.0 - K_assignment[node]) / 2.0
+
+    # Add reference node edges
+    if ref_edges:
+        V2_graph.add_node(ref)
+        for v_node, edge_w in ref_edges.items():
+            if abs(edge_w) > 1e-12:
+                V2_graph.add_edge(ref, v_node, weight=edge_w)
+
+    if V2_graph.number_of_nodes() == 0:
+        return const
+
+    best_assignment, _ = solve_maxcut_dc_qaoa(V2_graph, max_size=max_size, top_t=top_t)
+
+    # Ensure z_ref = +1 (global flip if needed — MaxCut score is invariant)
+    if ref_edges and best_assignment.get(ref, 1) == -1:
+        best_assignment = {n: -s for n, s in best_assignment.items()}
+
+    v2_assignment  = {n: s for n, s in best_assignment.items() if n in V2_set}
+    full_assignment = {**K_assignment, **v2_assignment}
+    return full_objective(subgraph, full_assignment)
+
+
 # ---------------------------------------------------------------------------
 # Step 4: QUBO fitting — off-diagonal Ĵ_ij, diagonal Ĵ_ii, constant ĉ
 # ---------------------------------------------------------------------------
@@ -198,6 +285,7 @@ def _solve_reweighting(
 def graph_decomposition_reduce(
     G: nx.Graph,
     M: int = 4,
+    v2_threshold: int = 20,
 ) -> tuple[nx.Graph, float]:
     """
     Iteratively reduce G via the min vertex-cut decomposition (Algorithm 1).
@@ -257,10 +345,16 @@ def graph_decomposition_reduce(
 
         # Step 3: b[s] = optimal full_objective on G[V2∪K] with K pinned to s.
         # Includes K-K edges (MaxCut or QUBO) and node biases from prior iters.
+        use_heuristic = len(V2_list) > v2_threshold
+        if use_heuristic:
+            print(f"[cutset]   |V2|={len(V2_list)} > threshold={v2_threshold}: using DC-QAOA heuristic for V2")
         b: dict = {}
         for bits in itertools.product([0, 1], repeat=len(K_list)):
             K_assign = {K_list[i]: 1 - 2 * bits[i] for i in range(len(K_list))}
-            b[bits]  = _exact_fixed_K(subgraph_V2K, V2_list, K_assign)
+            if use_heuristic:
+                b[bits] = _heuristic_fixed_K(subgraph_V2K, V2_list, K_assign)
+            else:
+                b[bits] = _exact_fixed_K(subgraph_V2K, V2_list, K_assign)
 
         # Step 4: fit QUBO.
         J_hat, D_hat, c_hat = _solve_reweighting(K_list, b)
