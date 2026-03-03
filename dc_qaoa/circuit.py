@@ -63,7 +63,7 @@ def U_XY(edges: edges, param: MemoryReference) -> tuple[Gate]:
     
     return gate
 
-def _build_qaoa_circuit(
+def build_qaoa_circuit(
     n_qubits: int,
     edges: list[tuple[int, int, float]],
     p_layers: int,
@@ -108,3 +108,4 @@ def _build_qaoa_circuit(
         prog += MEASURE(q, ro[q])
 
     return prog
+    

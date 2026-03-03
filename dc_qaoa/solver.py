@@ -67,7 +67,7 @@ def solve_subgraph(subgraph: nx.Graph, top_t: int = 10) -> Solutions:
     ranked.sort(key=lambda x: x[0], reverse=True)
     return [sol for _, sol in ranked[:top_t]]
     
-def solve_maxcut_dc_qaoa(
+def solve_maxcut(
     graph : nx.Graph,
     max_size: int = 8,
     top_t: int = 10,

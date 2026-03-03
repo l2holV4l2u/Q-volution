@@ -58,9 +58,12 @@ def load_graph(path: str | Path) -> nx.Graph:
         w = float(row[wgt_col]) if wgt_col else 1.0
         G.add_edge(u, v, weight=w)
 
-    print(
-        f"[graph_loader] Loaded graph: {G.number_of_nodes()} nodes, "
-        f"{G.number_of_edges()} edges  |  "
-        f"avg degree = {sum(d for _, d in G.degree()) / G.number_of_nodes():.2f}"
-    )
     return G
+
+def graph_compressed(graph : nx.Graph) -> edges:
+    node_index = {v: i for i, v in enumerate(graph.nodes())}
+    return [
+            (node_index[u], node_index[v], float(data.get("weight", 1.0)))
+            for u, v, data in graph.edges(data=True)], len(node_index)
+     
+
