@@ -95,10 +95,9 @@ def solve_maxcut(
     subgraph_solutions: dict[int, list[Solution]] = {}
     for i, leaf in enumerate(leaves):
         if verbose:
-            print(
-                f"[solve] leaf {i+1}/{len(leaves)}: "
-                f"n={leaf.graph.number_of_nodes()} m={leaf.graph.number_of_edges()} [{"quantum" if use_quantum else "classical"}]"
-            )
+            mode = "quantum" if use_quantum else "classical"
+            msg = f"n={leaf.graph.number_of_nodes()} m={leaf.graph.number_of_edges()} [{mode}]"
+            print(f"[solve] leaf {i+1}/{len(leaves)}: {msg}")
         solutions = solve_subgraph(leaf.graph, top_t=top_t)
         subgraph_solutions[id(leaf)] = solutions
         if verbose:
