@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--optimizer",
                    help="classical optimizer method")
     p.add_argument("--precondition", default=None,
-                   choices=["analytic-p1", "light-cone"],
+                   choices=["analytic-p1", "measurement", "back-propagate"],
                    help="initial parameter strategy for QAOA (only with --quantum)")
     return p.parse_args()
 

@@ -10,7 +10,7 @@ so that patches applied after import still take effect.
 USE_QUANTUM  = False   # set True when pyquil is installed & QVM/QPU ready
 QC_NAME = None
 OPTIMIZER    = "SA"
-PRECONDITION = None   # None | "analytic-p1" | "light-cone"
+PRECONDITION = None   # None | "analytic-p1" | "measurement" | "back-propagate"
 # ── QAOA circuit ───────────────────────────────────────────────────────────────
 MIXER_MODE   = "X"     # "X" (standard), "XX" (graph-coupled), "XY" (XY-mixer)
 LAYER_COUNT  = 1       # QAOA depth p  (p=1 for noisy hardware; increase for sim)
