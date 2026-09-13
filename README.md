@@ -1,7 +1,16 @@
-﻿# DC-QAOA โ€” Divide-and-Conquer QAOA for Weighted Max-Cut
+# DC-QAOA — Divide-and-Conquer QAOA for Weighted Max-Cut
 
-Q-volution 2025 competition entry. Solves the Maximum Power Energy Section (MPES)
-problem on electrical grids, which is a **weighted Max-Cut** problem.
+Q-volution 2025 competition entry (Aqora.io / Rigetti). Solves the Maximum Power
+Energy Section (MPES) problem on electrical grids, which is a **weighted Max-Cut**:
+
+```
+C(z) = 1/2 * Σ_(i,j)∈E  w_ij (1 - z_i z_j),   z ∈ {+1,-1}^|V|
+```
+
+Standard QAOA needs one qubit per node (180 for Dataset B), far beyond what
+Rigetti Ankaa-3 can run usefully. DC-QAOA partitions the graph into ≤8-node
+subgraphs, solves each with QAOA (or exact brute-force), and merges the pieces
+back up a partition tree.
 
 ---
 
@@ -9,183 +18,131 @@ problem on electrical grids, which is a **weighted Max-Cut** problem.
 
 ```
 .
-โ”โ”€โ”€ main.py                   # CLI entry point
-โ”
-โ”โ”€โ”€ dc_qaoa/                  # Core package
-โ”   โ”โ”€โ”€ config.py             # All runtime-tunable constants (patched by CLI)
-โ”   โ”โ”€โ”€ graph_loader.py       # .parquet โ’ nx.Graph
-โ”   โ”โ”€โ”€ partitioner.py        # Recursive NaiveLGP graph partitioning โ’ PartitionNode tree
-โ”   โ”โ”€โ”€ solver.py             # Public API: backend dispatch + maxcut_score
-โ”   โ”โ”€โ”€ quantum_backend.py    # pyQuil QAOA circuit + simulated annealing optimisation
-โ”   โ”โ”€โ”€ classical_backend.py  # Exact brute-force over all 2^n assignments
-โ”   โ”โ”€โ”€ merger.py             # GR policy merge through the partition tree
-โ”   โ”โ”€โ”€ pipeline.py           # Orchestrates all 5 steps end-to-end
-โ”   โ””โ”€โ”€ graph_decomposition_reducer.py  # graph decomposition reduction
-โ”
-โ”โ”€โ”€ tools/
-โ”   โ”โ”€โ”€ benchmark.py          # DC-QAOA vs classical baselines comparison
-โ”   โ”โ”€โ”€ bruteforce.py         # Exact 2^n brute-force (Dataset A only)
-โ”   โ”โ”€โ”€ resource_estimation.py # Why standard QAOA is infeasible for Dataset B
-โ”   โ”โ”€โ”€ visualize_cut.py      # Draw the Max-Cut result on the graph
-โ”   โ””โ”€โ”€ test_qvm.py           # Smoke test against local QVM
-โ”
-โ””โ”€โ”€ datasets/
-    โ”โ”€โ”€ dataset_A.parquet     # 21 nodes, 28 edges (South Carolina grid subset)
-    โ””โ”€โ”€ dataset_B.parquet     # 180 nodes, 226 edges (larger grid section)
+├── main.py                       # CLI entry point
+├── setup.py                      # pip install .
+├── docker-compose.yml            # quilc + qvm containers
+│
+├── dc_qaoa/                      # Core package
+│   ├── config.py                 # Runtime constants, patched by CLI flags
+│   ├── graph.py                  # .parquet / .csv -> nx.Graph
+│   ├── partitioner.py            # Recursive NaiveLGP partitioning -> PartitionNode tree
+│   ├── solver.py                 # Backend dispatch + maxcut_score
+│   ├── classical_backend.py      # Exact brute-force over all 2^n assignments
+│   ├── quantum_backend.py        # pyQuil QAOA + angle optimisation (SA/SLSQP/COBYLA/COBYQA)
+│   ├── circuit.py                # QAOA circuit construction
+│   ├── cost_function.py          # Loss evaluation from bitstring samples
+│   ├── precondition.py           # Initial-angle strategies (analytic-p1, back-propagate, ...)
+│   ├── merger.py                 # GR-policy merge through the partition tree
+│   ├── pipeline.py               # Orchestrates load -> partition -> solve -> merge -> score
+│   ├── visualization.py          # Loss-curve / graph plotting helpers
+│   └── graph_decomposition_reducer.py  # QUBO reduction (Ponce et al. arXiv:2306.00494)
+│
+├── tools/
+│   ├── benchmark.py              # Optimizer x precondition benchmark (9 combos)
+│   ├── bruteforce.py             # Exact optimum (A) / SDP bound + SA (B)
+│   ├── resource_estimation.py    # Why standard QAOA is infeasible on Ankaa-3
+│   ├── visualize_cut.py          # Draw the Max-Cut result
+│   └── test_qvm.py               # Smoke test against local QVM
+│
+├── datasets/
+│   ├── dataset_A.parquet / .csv  # 21 nodes, 28 edges (South Carolina grid subset)
+│   ├── dataset_B.parquet / .csv  # 180 nodes, 226 edges
+│   └── datagenerator.py
+│
+└── output/                       # Benchmark spreadsheets / plots
 ```
 
 ---
 
-## Data Flow & Pipeline
+## Pipeline
 
-```
-.parquet file
-     โ”
-     โ–ผ
-[graph_loader]  โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€  Step 1
-  load_graph()
-  Reads edge list (node_a, node_b, weight columns).
-  Returns nx.Graph with edge weights = line admittances.
-     โ”
-     โ–ผ
-[partitioner]  โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€  Step 2
-  recursive_partition(G, max_size)
-  Recursively splits G until every leaf has โค max_size nodes.
-
-  NaiveLGP: finds the smallest vertex separator S that disconnects
-  G into A and B. Separator nodes S are included in BOTH subgraphs
-  (AโชS and BโชS) so no cross-separator edges are lost.
-
-  Builds a binary PartitionNode tree.
-  Leaves are the subgraphs sent to the solver.
-     โ”
-     โ–ผ
-[solver โ’ backend]  โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€  Step 3
-  solve_subgraph(leaf.graph, top_t)
-  Reads config.USE_QUANTUM to pick the backend:
-
-    classical_backend  (USE_QUANTUM=False, default)
-      Exact brute-force: enumerates all 2^n spin assignments.
-
-    quantum_backend  (USE_QUANTUM=True, requires pyQuil)
-      Builds a parametric QAOA circuit:
-        - Initial state: |+>^n (Hadamard on all qubits)
-        - p layers of: cost layer (CNOT-RZ-CNOT per edge)
-                     + mixer layer (RX per qubit, default "X" mixer)
-        - Measure all qubits
-      Compiled once via quilc, then optimised with simulated annealing
-      (dual_annealing) over the angle parameters (gammas, betas).
-      Returns the SHOTS bitstring samples at the optimal angles.
-
-  Each leaf gets a list of up to top_t Solution dicts: {node_id: +1|-1}
-     โ”
-     โ–ผ
-[merger]  โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€  Step 4
-  merge(G, partition_tree, subgraph_solutions, top_t)
-  Walks the partition tree bottom-up (GR policy):
-
-  At each internal node with separator S, left solutions, right solutions:
-    1. For every pair (left_sol, right_sol):
-         enumerate all 2^|S| spin assignments for separator nodes
-         score each combined assignment on the subtree subgraph
-    2. Keep the top-t highest-scoring unique assignments.
-
-  Propagates diversity (top-t) up the tree until the root.
-  Returns the single best global assignment.
-     โ”
-     โ–ผ
-[solver]  โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€  Step 5
-  maxcut_score(G, assignment)
-  C(z) = ฮฃ w_uv * (1 - z_u * z_v) / 2  for all edges (u,v)
-  Prints final score, total weight, and approximation ratio.
-```
+1. **Load** (`graph.py`) — read edge list, edge weight = line admittance.
+2. **Partition** (`partitioner.py`) — recursively split until every leaf has ≤ `max_size` nodes.
+   NaiveLGP finds the smallest vertex separator S; S is kept in **both** halves so no
+   cross-separator edge is lost. Result is a binary `PartitionNode` tree.
+3. **Solve leaves** (`solver.py`) — `config.USE_QUANTUM` picks the backend:
+   - classical: enumerate all 2^n spin assignments (default).
+   - quantum: parametric QAOA circuit (|+>^n, p × [cost layer + mixer], measure),
+     compiled once via quilc, angles optimised with the chosen optimizer.
+   Each leaf returns up to `top_t` solutions `{node_id: ±1}`.
+4. **Merge** (`merger.py`) — bottom-up. At each internal node, for every (left, right)
+   solution pair enumerate all 2^|S| separator assignments, score on the subtree
+   subgraph, keep the top-t. A greedy local-search polish runs on the full graph at the end.
+5. **Score** — `maxcut_score(G, assignment)`; prints score, total weight, approximation ratio.
 
 ---
 
 ## Setup
 
+Python ≥ 3.11.
+
 ```bash
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt 2>/dev/null || pip install pandas pyarrow networkx numpy scipy
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install .                     # pandas, pyarrow, networkx, numpy, scipy
 
-# Optional extras for tools/
-pip install matplotlib cvxpy pyquil
+# Optional, for tools/ and the quantum backend
+pip install matplotlib openpyxl cvxpy pyquil
 ```
 
-> **Windows note:** `pip install -e .` requires an Administrator shell (to write
-> `dc_qaoa.exe` into `Scripts/`). The simpler alternative โ€” no install needed โ€”
-> is the `.env` file already in the repo root. VSCode picks it up automatically.
-> For a plain terminal, set it once per session:
+> **Windows note:** `pip install -e .` needs an Administrator shell. The no-install
+> alternative is setting `PYTHONPATH` to the repo root (the `.env` file does this for
+> VSCode). In a plain terminal:
 >
 > ```powershell
 > $env:PYTHONPATH = $PWD   # PowerShell
 > ```
->
 > ```bash
 > export PYTHONPATH=.      # bash / Git Bash
 > ```
 
-For QPU/QVM access (optional):
+**Quantum backend** needs quilc and a QVM running:
 
 ```bash
-# Start Quil compiler and QVM servers in separate terminals
-quilc -S
-qvm -S
-
-# Authenticate with Rigetti QCS for real QPU runs
-qcs auth login
+docker compose up -d      # or: quilc -S  and  qvm -S  in two terminals
+qcs auth login            # only for real QPU runs
 ```
 
 ---
 
 ## Running
 
-**Classical (no hardware needed):**
-
 ```bash
+# Classical (no hardware)
 python main.py datasets/dataset_A.parquet
-```
 
-**Quantum via QVM (requires `quilc -S` and `qvm -S` running):**
-
-```bash
+# Quantum via local QVM
 python main.py --quantum datasets/dataset_A.parquet
-```
 
-**Quantum on Rigetti QPU (requires `qcs auth login`):**
-
-```bash
+# Quantum on Rigetti QPU
 python main.py --quantum --qc Ankaa-3 datasets/dataset_B.parquet
+
+# Pick optimizer / initial angles, save loss plot
+python main.py --quantum --optimizer COBYLA --precondition analytic-p1 --plot-loss datasets/dataset_A.parquet
 ```
 
-| Flag        | Default  | Description                                     |
-| ----------- | -------- | ----------------------------------------------- |
-| `--quantum` | off      | Use QAOA quantum backend                        |
-| `--qc`      | `8q-qvm` | pyQuil quantum computer (only with `--quantum`) |
+| Flag             | Default  | Description                                                    |
+| ---------------- | -------- | -------------------------------------------------------------- |
+| `--quantum`      | off      | Use the pyQuil QAOA backend                                    |
+| `--qc`           | `8q-qvm` | pyQuil quantum computer name (with `--quantum`)                |
+| `--optimizer`    | `SA`     | `SA` (dual annealing), `SLSQP`, `COBYLA`, `COBYQA`             |
+| `--precondition` | none     | `analytic-p1`, `measurement`, `back-propagate`                 |
+| `--plot-loss`    | off      | Plot the loss curve after optimisation                         |
+| `--save-plots`   | `output` | Directory for loss PNGs (headless runs)                        |
+
+`main_mac.py` is the same entry point pinned to a QVM on port 6000.
 
 ---
 
-## Problem Constraints and Resource Estimation
+## Resource Estimation
 
-From the competition statement (`Q-volution problem statement.html`):
+Ankaa-3 practical target: ~10 qubits and ≤100 two-qubit gates per circuit.
+`tools/resource_estimation.py` with repo defaults:
 
-- Objective: weighted Max-Cut / MPES  
-  `C(z) = 1/2 * sum_(i,j in E) w_ij (1 - z_i z_j)`
-- Problem A: 21 nodes, 28 edges
-- Problem B: 180 nodes, 226 edges
-- Hardware guidance (Rigetti Ankaa-3): practical target around ~10 qubits and <=100 two-qubit gates per circuit
-
-Using `tools/resource_estimation.py` with current repo defaults:
-
-- Standard QAOA (one qubit per node), `p=1`:
-  - Dataset A: 21 qubits, ~252 routed iSWAPs, estimated fidelity ~0.2828 -> infeasible
-  - Dataset B: 180 qubits, ~2034 routed iSWAPs, estimated fidelity ~0.000037 -> infeasible
-- DC-QAOA (`max_size=8`, `p=1`):
-  - Dataset A: max 8 qubits/subgraph, max 99 routed iSWAPs -> feasible
-  - Dataset B: max 8 qubits/subgraph, max 90 routed iSWAPs -> feasible
-
-Reproduce:
+| Approach                   | Dataset A                       | Dataset B                         |
+| -------------------------- | ------------------------------- | --------------------------------- |
+| Standard QAOA, p=1         | 21 qubits, ~252 iSWAPs, F≈0.28  | 180 qubits, ~2034 iSWAPs, F≈4e-5  |
+| DC-QAOA, max_size=8, p=1   | ≤8 qubits, ≤99 iSWAPs/subgraph  | ≤8 qubits, ≤90 iSWAPs/subgraph    |
 
 ```bash
 python tools/resource_estimation.py datasets/dataset_A.parquet datasets/dataset_B.parquet
@@ -195,123 +152,80 @@ python tools/resource_estimation.py datasets/dataset_A.parquet datasets/dataset_
 
 ## Tools
 
-All tools are run from the **project root** (`Q-volution 2025/`), not from inside `tools/`.
+Run every tool from the repo root.
 
----
+### `benchmark.py`
 
-### `benchmark.py` - Quantum benchmark over 9 method/precondition combinations
-
-By default it runs all combinations:
-
-- Methods: `SLSQP`, `COBYLA`, `COBYQA`
-- Preconditions: `none`, `back-propagate`, `analytic-p1`
-- Total: 9 combinations, each repeated `--runs` times (default `5`)
-
-For each combination, benchmark collects:
-
-- best-so-far loss per iteration (averaged over runs)
-- parameter trajectories (`gamma`, `beta`) per iteration
-- final bitstring probability distribution (averaged over runs)
-
-Outputs (saved to `output/`):
+Runs every optimizer × precondition combination (3 × 3 = 9), `--runs` times each
+(default 5). Records best-so-far loss per iteration, `gamma`/`beta` trajectories,
+and the final bitstring distribution. Saves to `output/`:
 
 - `avg_loss_params_<dataset>_all_combinations.png`
 - `avg_final_probability_<dataset>_all_combinations.png`
-- `benchmark_data_<dataset>_all_combinations.xlsx` (all plotted data)
+- `benchmark_data_<dataset>_all_combinations.xlsx`
 
 ```bash
 python tools/benchmark.py datasets/dataset_A.parquet
-python tools/benchmark.py datasets/dataset_B.parquet
-```
-
-Optional overrides:
-
-```bash
 python tools/benchmark.py datasets/dataset_B.parquet \
   --methods SLSQP COBYLA COBYQA \
   --preconditions none back-propagate analytic-p1 \
-  --runs 5 \
-  --qc 8q-qvm \
-  --output-dir output
+  --runs 5 --qc 8q-qvm --output-dir output
 ```
 
----
+### `bruteforce.py`
 
-### `bruteforce.py` โ€” Find the optimal / upper-bound Max-Cut score
-
-- **Dataset A (21 nodes):** exact brute-force over all 2ยฒยน assignments (~50 s)
-- **Dataset B (180 nodes):** SDP relaxation upper bound (`cvxpy` required) + simulated annealing best-known
+- Dataset A: exact brute-force over 2^21 assignments (~50 s).
+- Dataset B: Goemans-Williamson SDP upper bound (needs `cvxpy`) + simulated annealing.
 
 ```bash
-python tools/bruteforce.py datasets/dataset_A.parquet   # exact optimal
-python tools/bruteforce.py datasets/dataset_B.parquet   # SDP bound + SA
+python tools/bruteforce.py datasets/dataset_A.parquet
+python tools/bruteforce.py datasets/dataset_B.parquet
 ```
 
-SDP requires `cvxpy`: `pip install cvxpy`
+### `visualize_cut.py`
 
----
-
-### `resource_estimation.py` โ€” Hardware feasibility analysis
-
-Shows why standard QAOA is infeasible for large graphs on Rigetti Ankaa-3, and proves DC-QAOA fits within qubit and gate limits.
+Runs the pipeline and saves `maxcut_<dataset>.png` (cut edges green, uncut red
+dashed, nodes coloured by spin). `MAX_SIZE` / `TOP_T` are set at the top of the file.
 
 ```bash
-python tools/resource_estimation.py datasets/dataset_B.parquet
-python tools/resource_estimation.py datasets/dataset_A.parquet datasets/dataset_B.parquet  # both at once
+python tools/visualize_cut.py datasets/dataset_A.parquet
 ```
 
-No extra dependencies. Outputs qubit counts, iSWAP counts, routing overhead, circuit fidelity, and a per-subgraph breakdown.
+### `test_qvm.py`
 
----
-
-### `visualize_cut.py` โ€” Draw the Max-Cut result
-
-Runs the DC-QAOA pipeline, then saves a dark-themed PNG of the graph with cut edges (green) and uncut edges (red dashed), nodes coloured by spin.
+Runs the pipeline twice — classical, then QVM — and compares scores.
 
 ```bash
-python tools/visualize_cut.py datasets/dataset_A.parquet   # โ’ maxcut_dataset_A.png
-python tools/visualize_cut.py datasets/dataset_B.parquet   # โ’ maxcut_dataset_B.png
-```
-
-Output file is saved in the current directory. Tune `MAX_SIZE` and `TOP_T` at the top of the file.
-
----
-
-### `test_qvm.py` โ€” Smoke test against a local QVM (Docker)
-
-Runs the full DC-QAOA pipeline twice โ€” once with the classical backend, once with the pyQuil QVM โ€” and compares scores.
-
-**Prerequisites:**
-
-```bash
-# 1. Start the QVM and Quil compiler via Docker
 docker compose up -d
-
-# 2. Confirm both containers are running
-docker compose ps
+python tools/test_qvm.py A     # or B (default)
 ```
-
-**Run:**
-
-```bash
-python tools/test_qvm.py A   # Dataset A (21 nodes, faster)
-python tools/test_qvm.py B   # Dataset B (180 nodes, default)
-```
-
-If the QVM run fails, the script prints Docker troubleshooting commands. Tune `MAX_SIZE`, `TOP_T`, and `QC_NAME` at the top of the file.
 
 ---
 
 ## Config
 
-All tunable parameters live in `dc_qaoa/config.py` and are patched at startup by
-`main.py`. To change defaults permanently, edit that file directly.
+Defaults live in `dc_qaoa/config.py`; CLI flags override them at startup.
 
 ```python
-USE_QUANTUM  = False   # True โ’ quantum backend
+USE_QUANTUM  = False   # True -> quantum backend
+OPTIMIZER    = "SA"    # "SA" | "SLSQP" | "COBYLA" | "COBYQA"
+PRECONDITION = None    # None | "analytic-p1" | "measurement" | "back-propagate"
 MIXER_MODE   = "X"     # "X" (standard) | "XX" (graph-coupled) | "XY"
 LAYER_COUNT  = 1       # QAOA depth p
 SHOTS        = 1024    # Measurement shots per circuit run
 SEED         = 42
-MAXITER   = 100     # Optimizer iterations
+MAXITER      = 100     # Optimizer iterations
 ```
+
+`max_size=8` and `top_t=10` are defaults of `run_pipeline()` in `dc_qaoa/pipeline.py`.
+
+---
+
+## Known Results (classical backend, max_size=8)
+
+| Dataset | Nodes | Score   | Total Weight | Ratio  |
+| ------- | ----- | ------- | ------------ | ------ |
+| A       | 21    | 3728.41 | 4215.67      | 0.8844 |
+| B       | 180   | 7099.57 | 7465.71      | 0.9510 |
+
+Dataset A matches the exact brute-force optimum. Dataset B (2^180) is not brute-forceable.
